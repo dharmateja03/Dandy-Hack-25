@@ -146,11 +146,15 @@ class MCPCore:
         user = await self.database.get_user(user_id)
         assigned_tasks = await self.database.get_user_tasks(user_id)
 
+        # Handle case where user might not exist in database
+        user_name = user.get('name', user_id) if user else user_id
+        task_list = ', '.join([t['title'] for t in assigned_tasks]) if assigned_tasks else "No assigned tasks"
+
         prompt = f"""
 You are parsing a standup update from a team member. Extract structured information.
 
-User: {user.get('name', user_id)}
-Assigned Tasks: {', '.join([t['title'] for t in assigned_tasks])}
+User: {user_name}
+Assigned Tasks: {task_list}
 
 Standup Message:
 {message}
