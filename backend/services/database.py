@@ -393,3 +393,207 @@ class DatabaseService:
                 }
                 for s in standups
             ]
+
+    # ========== SCHEDULER SUPPORT METHODS ==========
+
+    async def get_all_active_users(self) -> List[Dict]:
+        """Get all active users"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.is_active == True)
+            )
+            users = result.scalars().all()
+
+            return [
+                {
+                    "id": u.id,
+                    "name": u.name,
+                    "email": u.email,
+                    "role": u.role.value if u.role else None,
+                    "slack_user_id": u.slack_user_id
+                }
+                for u in users
+            ]
+
+    async def user_has_standup_today(self, user_id: str, date: str) -> bool:
+        """Check if user has submitted standup for given date"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(func.count(Standup.id)).where(
+                    Standup.user_id == user_id,
+                    Standup.date == date
+                )
+            )
+            count = result.scalar()
+            return count > 0
+
+    async def create_reminder(
+        self,
+        user_id: str,
+        reminder_type: str,
+        message: str,
+        scheduled_for: datetime,
+        related_id: Optional[int] = None
+    ):
+        """Create a reminder"""
+        async with self.async_session() as session:
+            reminder = Reminder(
+                user_id=user_id,
+                reminder_type=reminder_type,
+                message=message,
+                scheduled_for=scheduled_for,
+                related_id=related_id
+            )
+            session.add(reminder)
+            await session.commit()
+
+    async def get_pending_reminders(self) -> List[Dict]:
+        """Get all pending reminders that should be sent now"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Reminder).where(
+                    Reminder.is_sent == False,
+                    Reminder.scheduled_for <= datetime.utcnow()
+                )
+            )
+            reminders = result.scalars().all()
+
+            return [
+                {
+                    "id": r.id,
+                    "user_id": r.user_id,
+                    "reminder_type": r.reminder_type,
+                    "message": r.message,
+                    "related_id": r.related_id
+                }
+                for r in reminders
+            ]
+
+    async def mark_reminder_sent(self, reminder_id: int):
+        """Mark reminder as sent"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Reminder).where(Reminder.id == reminder_id)
+            )
+            reminder = result.scalar_one_or_none()
+
+            if reminder:
+                reminder.is_sent = True
+                reminder.sent_at = datetime.utcnow()
+                await session.commit()
+
+    async def get_stale_help_requests(self, hours: int = 6) -> List[Dict]:
+        """Get help requests with no response for X hours"""
+        async with self.async_session() as session:
+            cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+            result = await session.execute(
+                select(HelpRequest).where(
+                    HelpRequest.status == HelpRequestStatus.PENDING,
+                    HelpRequest.created_at <= cutoff
+                )
+            )
+            requests = result.scalars().all()
+
+            return [
+                {
+                    "id": req.id,
+                    "from_user_id": req.from_user_id,
+                    "from_user_name": req.from_user_id,  # TODO: Join
+                    "to_user_id": req.to_user_id,
+                    "topic": req.topic,
+                    "created_at": req.created_at
+                }
+                for req in requests
+            ]
+
+    async def get_long_standing_blockers(self, days: int = 2) -> List[Dict]:
+        """Get blockers that have been active for X days"""
+        async with self.async_session() as session:
+            cutoff = datetime.utcnow() - timedelta(days=days)
+
+            result = await session.execute(
+                select(BlockerAlert).where(
+                    BlockerAlert.is_resolved == False,
+                    BlockerAlert.created_at <= cutoff
+                )
+            )
+            blockers = result.scalars().all()
+
+            return [
+                {
+                    "id": b.id,
+                    "user_id": b.user_id,
+                    "user_name": b.user_id,  # TODO: Join
+                    "manager_id": b.manager_id,
+                    "description": b.description,
+                    "severity": b.severity,
+                    "created_at": b.created_at
+                }
+                for b in blockers
+            ]
+
+    async def get_users_by_role(self, role: str) -> List[Dict]:
+        """Get all users with a specific role"""
+        async with self.async_session() as session:
+            role_enum = UserRole[role.upper()]
+
+            result = await session.execute(
+                select(User).where(
+                    User.role == role_enum,
+                    User.is_active == True
+                )
+            )
+            users = result.scalars().all()
+
+            return [
+                {
+                    "id": u.id,
+                    "name": u.name,
+                    "email": u.email,
+                    "slack_user_id": u.slack_user_id
+                }
+                for u in users
+            ]
+
+    # ========== JIRA INTEGRATION METHODS ==========
+
+    async def get_task_by_jira_id(self, jira_id: str) -> Optional[Dict]:
+        """Get task by Jira ID"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Task).where(Task.jira_id == jira_id)
+            )
+            task = result.scalar_one_or_none()
+
+            if task:
+                return {
+                    "id": task.id,
+                    "title": task.title,
+                    "jira_id": task.jira_id,
+                    "status": task.status.value if task.status else None
+                }
+            return None
+
+    async def create_task(self, task_data: Dict) -> int:
+        """Create a new task"""
+        async with self.async_session() as session:
+            task = Task(**task_data)
+            session.add(task)
+            await session.commit()
+            return task.id
+
+    async def update_task(self, task_id: int, **kwargs):
+        """Update task fields"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Task).where(Task.id == task_id)
+            )
+            task = result.scalar_one_or_none()
+
+            if task:
+                for key, value in kwargs.items():
+                    if hasattr(task, key):
+                        setattr(task, key, value)
+
+                await session.commit()

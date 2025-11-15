@@ -78,24 +78,42 @@ class VectorDBService:
 
     def _generate_embedding(self, text: str) -> List[float]:
         """
-        Generate embedding for text
+        Generate embedding for text using Gemini's embedding model
 
-        TODO: Replace with actual embedding model
-        For MVP, using simple hash-based pseudo-embedding
-        In production: use Gemini embedding API or sentence-transformers
+        Uses Google's embedding-001 model (768 dimensions)
         """
-        # Temporary: Simple hash-based embedding
-        # This is NOT semantic, just for MVP structure
-        hash_obj = hashlib.sha256(text.encode())
-        hash_bytes = hash_obj.digest()
+        try:
+            import google.generativeai as genai
 
-        # Convert to 768-dim vector (repeat and normalize)
-        embedding = []
-        for i in range(768):
-            byte_val = hash_bytes[i % len(hash_bytes)]
-            embedding.append((byte_val / 255.0) - 0.5)  # Normalize to [-0.5, 0.5]
+            # Use Gemini embedding model
+            result = genai.embed_content(
+                model="models/embedding-001",
+                content=text,
+                task_type="retrieval_document"
+            )
 
-        return embedding
+            embedding = result['embedding']
+
+            # Ensure correct dimension
+            if len(embedding) != 768:
+                logger.warning(f"Unexpected embedding dimension: {len(embedding)}, expected 768")
+
+            return embedding
+
+        except Exception as e:
+            logger.error(f"Error generating Gemini embedding: {e}")
+
+            # Fallback: Simple hash-based embedding (for development only)
+            logger.warning("Falling back to hash-based embedding")
+            hash_obj = hashlib.sha256(text.encode())
+            hash_bytes = hash_obj.digest()
+
+            embedding = []
+            for i in range(768):
+                byte_val = hash_bytes[i % len(hash_bytes)]
+                embedding.append((byte_val / 255.0) - 0.5)
+
+            return embedding
 
     async def add_standup(
         self,

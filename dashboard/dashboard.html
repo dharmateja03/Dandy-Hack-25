@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Dashboard - Model Context Protocol</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/@viz-js/viz@3.2.4/lib/viz-standalone.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #2d3748;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-card.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .stat-card.success {
+            border-left-color: #10b981;
+        }
+
+        .stat-card.danger {
+            border-left-color: #ef4444;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1a202c;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-change {
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            color: #10b981;
+        }
+
+        .stat-change.negative {
+            color: #ef4444;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #1a202c;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .tab {
+            padding: 1rem 1.5rem;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #718096;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Dependency Graph */
+        #dependency-graph {
+            width: 100%;
+            min-height: 400px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fafafa;
+            overflow: auto;
+        }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 2rem;
+        }
+
+        /* Standup List */
+        .standup-item {
+            padding: 1.5rem;
+            border-left: 4px solid #667eea;
+            background: #f8fafc;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .standup-item:hover {
+            transform: translateX(4px);
+        }
+
+        .standup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .standup-user {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #1a202c;
+        }
+
+        .standup-time {
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        .standup-message {
+            line-height: 1.6;
+            color: #4a5568;
+            white-space: pre-wrap;
+        }
+
+        .standup-tags {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .tag.blocker {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .tag.help {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .tag.completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #718096;
+        }
+
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Task List */
+        .task-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 3px solid #cbd5e0;
+        }
+
+        .task-item.in-progress {
+            border-left-color: #3b82f6;
+        }
+
+        .task-item.completed {
+            border-left-color: #10b981;
+            opacity: 0.7;
+        }
+
+        .task-item.blocked {
+            border-left-color: #ef4444;
+        }
+
+        .task-info h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .task-meta {
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        .task-status {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-in-progress {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .status-blocked {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-not-started {
+            background: #f3f4f6;
+            color: #374151;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 MCP Dashboard</h1>
+        <p>Model Context Protocol - Team Intelligence & Analytics</p>
+    </div>
+
+    <div class="container">
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card success">
+                <div class="stat-value" id="standup-count">0</div>
+                <div class="stat-label">Standups This Week</div>
+                <div class="stat-change">+20% from last week</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value" id="active-tasks">0</div>
+                <div class="stat-label">Active Tasks</div>
+                <div class="stat-change">8 in progress</div>
+            </div>
+
+            <div class="stat-card warning">
+                <div class="stat-value" id="blocker-count">0</div>
+                <div class="stat-label">Active Blockers</div>
+                <div class="stat-change negative">Needs attention</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value" id="help-requests">0</div>
+                <div class="stat-label">Help Requests</div>
+                <div class="stat-change">3 pending</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('overview')">Overview</button>
+            <button class="tab" onclick="showTab('standups')">Standups</button>
+            <button class="tab" onclick="showTab('tasks')">Tasks</button>
+            <button class="tab" onclick="showTab('analytics')">Analytics</button>
+            <button class="tab" onclick="showTab('dependencies')">Dependencies</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <div class="card">
+                <h2>📊 Weekly Velocity</h2>
+                <div class="chart-container">
+                    <canvas id="velocityChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>💬 Recent Team Activity</h2>
+                <div id="recent-activity" class="loading">
+                    <div class="spinner"></div>
+                    Loading activity...
+                </div>
+            </div>
+        </div>
+
+        <!-- Standups Tab -->
+        <div id="standups" class="tab-content">
+            <div class="card">
+                <h2>📅 Recent Standups</h2>
+                <div id="standup-list" class="loading">
+                    <div class="spinner"></div>
+                    Loading standups...
+                </div>
+            </div>
+        </div>
+
+        <!-- Tasks Tab -->
+        <div id="tasks" class="tab-content">
+            <div class="card">
+                <h2>✅ Team Tasks</h2>
+                <div id="task-list" class="loading">
+                    <div class="spinner"></div>
+                    Loading tasks...
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-content">
+            <div class="card">
+                <h2>📈 Task Completion Rate</h2>
+                <div class="chart-container">
+                    <canvas id="completionChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🚨 Blocker Analysis</h2>
+                <div class="chart-container">
+                    <canvas id="blockerChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dependencies Tab -->
+        <div id="dependencies" class="tab-content">
+            <div class="card">
+                <h2>🔗 Task Dependencies</h2>
+                <div id="dependency-graph"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MCP_API_URL = 'http://localhost:8000';
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Load standups
+        async function loadStandups() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/standups/recent?days=7`);
+                const data = await response.json();
+
+                const standupList = document.getElementById('standup-list');
+                const activityList = document.getElementById('recent-activity');
+
+                if (data.standups && data.standups.length > 0) {
+                    const html = data.standups.map(standup => {
+                        const parsed = standup.parsed_data || {};
+                        const tags = [];
+
+                        if (parsed.blockers && parsed.blockers.length > 0) {
+                            tags.push('<span class="tag blocker">🚨 Blocker</span>');
+                        }
+                        if (parsed.help_requests && parsed.help_requests.length > 0) {
+                            tags.push('<span class="tag help">🤝 Help Needed</span>');
+                        }
+                        if (parsed.tasks_completed && parsed.tasks_completed.length > 0) {
+                            tags.push('<span class="tag completed">✅ Completed Tasks</span>');
+                        }
+
+                        return `
+                            <div class="standup-item">
+                                <div class="standup-header">
+                                    <div class="standup-user">${standup.user_name || standup.user_id}</div>
+                                    <div class="standup-time">${new Date(standup.timestamp).toLocaleString()}</div>
+                                </div>
+                                <div class="standup-message">${standup.message}</div>
+                                ${tags.length > 0 ? `<div class="standup-tags">${tags.join('')}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('');
+
+                    standupList.innerHTML = html;
+                    activityList.innerHTML = html.slice(0, 3);  // Show top 3
+
+                    document.getElementById('standup-count').textContent = data.standups.length;
+                } else {
+                    standupList.innerHTML = '<p>No standups yet. Try running the seed script!</p>';
+                    activityList.innerHTML = '<p>No recent activity.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading standups:', error);
+                document.getElementById('standup-list').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load standups. Is the backend running?</p>';
+            }
+        }
+
+        // Initialize Charts
+        function initCharts() {
+            // Velocity Chart
+            const velocityCtx = document.getElementById('velocityChart').getContext('2d');
+            new Chart(velocityCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                    datasets: [{
+                        label: 'Tasks Completed',
+                        data: [12, 15, 10, 18],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Completion Chart
+            const completionCtx = document.getElementById('completionChart').getContext('2d');
+            new Chart(completionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed', 'In Progress', 'Blocked', 'Not Started'],
+                    datasets: [{
+                        data: [12, 8, 2, 5],
+                        backgroundColor: ['#10b981', '#3b82f6', '#ef4444', '#9ca3af']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            // Blocker Chart
+            const blockerCtx = document.getElementById('blockerChart').getContext('2d');
+            new Chart(blockerCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Technical', 'Dependency', 'Resource', 'External'],
+                    datasets: [{
+                        label: 'Blockers by Type',
+                        data: [5, 3, 2, 1],
+                        backgroundColor: '#f59e0b'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render Dependency Graph
+        function renderDependencyGraph() {
+            const graphvizDot = `
+                digraph Dependencies {
+                    rankdir=LR;
+                    node [shape=box, style=rounded, fontname="Arial"];
+
+                    "OAuth Auth" [fillcolor="#dbeafe", style="rounded,filled"];
+                    "Dashboard UI" [fillcolor="#dbeafe", style="rounded,filled"];
+                    "Redis Cache" [fillcolor="#f3f4f6", style="rounded,filled"];
+                    "CI/CD Pipeline" [fillcolor="#d1fae5", style="rounded,filled"];
+                    "DB Migration" [fillcolor="#dbeafe", style="rounded,filled"];
+
+                    "Dashboard UI" -> "OAuth Auth" [label="depends on"];
+                    "Redis Cache" -> "OAuth Auth" [label="depends on"];
+                    "DB Migration" -> "CI/CD Pipeline" [label="requires"];
+                }
+            `;
+
+            Viz.instance().then(viz => {
+                const svg = viz.renderSVGElement(graphvizDot);
+                document.getElementById('dependency-graph').innerHTML = '';
+                document.getElementById('dependency-graph').appendChild(svg);
+            });
+        }
+
+        // Load everything on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadStandups();
+            initCharts();
+            renderDependencyGraph();
+
+            // Refresh every 30 seconds
+            setInterval(loadStandups, 30000);
+        });
+    </script>
+</body>
+</html>

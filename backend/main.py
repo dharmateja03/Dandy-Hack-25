@@ -11,6 +11,7 @@ import logging
 from services.mcp_core import MCPCore
 from services.vector_db import VectorDBService
 from services.database import DatabaseService
+from services.scheduler import SchedulerService
 from routers import standups, tasks, help_requests, analytics
 from config import settings
 
@@ -21,13 +22,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global MCP instance
+# Global instances
 mcp_core = None
+scheduler = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup MCP core services"""
-    global mcp_core
+    global mcp_core, scheduler
 
     logger.info("🚀 Initializing MCP (Model Context Protocol)...")
 
@@ -45,10 +47,20 @@ async def lifespan(app: FastAPI):
     await mcp_core.initialize()
     logger.info("✅ MCP initialized successfully")
 
+    # Initialize Scheduler
+    scheduler = SchedulerService(mcp_core)
+    await scheduler.initialize()
+    logger.info("✅ Scheduler initialized")
+
+    # Make MCP available to routers
+    app.state.mcp = mcp_core
+
     yield
 
     # Cleanup
     logger.info("🔄 Shutting down MCP...")
+    if scheduler:
+        await scheduler.shutdown()
     await mcp_core.cleanup()
     logger.info("✅ MCP shutdown complete")
 
