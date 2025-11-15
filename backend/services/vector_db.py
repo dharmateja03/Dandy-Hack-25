@@ -80,14 +80,14 @@ class VectorDBService:
         """
         Generate embedding for text using Gemini's embedding model
 
-        Uses Google's embedding-001 model (768 dimensions)
+        Uses Google's text-embedding-004 model (768 dimensions)
         """
         try:
             import google.generativeai as genai
 
-            # Use Gemini embedding model
+            # Use Gemini embedding model (updated to text-embedding-004)
             result = genai.embed_content(
-                model="models/embedding-001",
+                model="models/text-embedding-004",
                 content=text,
                 task_type="retrieval_document"
             )

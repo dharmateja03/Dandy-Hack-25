@@ -23,7 +23,8 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-pro"
+    GEMINI_MODEL: str = "gemini-1.5-flash"  # Updated model name
+    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"  # Updated embedding model
 
     # Slack Configuration
     SLACK_BOT_TOKEN: Optional[str] = None

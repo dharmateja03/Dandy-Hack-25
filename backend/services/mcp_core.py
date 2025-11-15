@@ -46,8 +46,8 @@ class MCPCore:
         try:
             # Initialize Gemini
             genai.configure(api_key=self.gemini_api_key)
-            self.model = genai.GenerativeModel('gemini-pro')
-            logger.info("✅ Gemini initialized")
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            logger.info("✅ Gemini initialized with gemini-1.5-flash")
 
             # Initialize Vector DB
             await self.vector_db.initialize()
@@ -72,7 +72,7 @@ class MCPCore:
             "mcp_status": "healthy",
             "vector_db": await self.vector_db.health_check(),
             "database": await self.database.health_check(),
-            "llm": "gemini-pro" if self.model else "not initialized"
+            "llm": "gemini-1.5-flash" if self.model else "not initialized"
         }
 
     async def process_standup(
