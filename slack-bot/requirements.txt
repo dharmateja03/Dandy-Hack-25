@@ -5,5 +5,8 @@ slack-sdk==3.26.1
 # HTTP client
 httpx==0.26.0
 
+# Scheduler
+APScheduler==3.10.4
+
 # Utilities
 python-dotenv==1.0.0
