@@ -1,0 +1,9 @@
+# Slack SDK
+slack-bolt==1.18.0
+slack-sdk==3.26.1
+
+# HTTP client
+httpx==0.26.0
+
+# Utilities
+python-dotenv==1.0.0

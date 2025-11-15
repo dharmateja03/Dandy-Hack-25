@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # MCP Backend API
+  mcp-backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://mcp_user:mcp_password@postgres:5432/mcp_db
+      - QDRANT_URL=http://qdrant:6333
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+    depends_on:
+      - postgres
+      - qdrant
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Slack Bot Service
+  slack-bot:
+    build: ./slack-bot
+    environment:
+      - MCP_API_URL=http://mcp-backend:8000
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+    depends_on:
+      - mcp-backend
+    volumes:
+      - ./slack-bot:/app
+    command: python app.py
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=mcp_user
+      - POSTGRES_PASSWORD=mcp_password
+      - POSTGRES_DB=mcp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Minimal Dashboard (optional for now)
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - MCP_API_URL=http://mcp-backend:8000
+    depends_on:
+      - mcp-backend
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+    command: python -m http.server 3000
+
+volumes:
+  qdrant_data:
+  postgres_data:
