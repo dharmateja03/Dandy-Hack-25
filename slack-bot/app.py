@@ -12,6 +12,7 @@ This bot is how teams interact with MCP:
 
 import os
 import logging
+import threading
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 import httpx
@@ -172,11 +173,11 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
 
 
 @app.view("standup_modal")
-async def handle_standup_submission(ack, body, client, view):
+def handle_standup_submission(ack, body, client, view):
     """
     Handle standup modal submission
     """
-    await ack()
+    ack()
 
     user_id = body["user"]["id"]
     values = view["state"]["values"]
@@ -202,9 +203,14 @@ async def handle_standup_submission(ack, body, client, view):
     if help_needed:
         standup_message += f"\n**Help Needed:**\n{help_needed}\n"
 
-    # Process standup
+    # Process standup (run async function in background)
     try:
-        await process_standup_response(user_id, standup_message, client)
+        # Create a new event loop for async operations
+        thread = threading.Thread(
+            target=lambda: asyncio.run(process_standup_response(user_id, standup_message, client)),
+            daemon=True
+        )
+        thread.start()
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
 
