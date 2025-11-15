@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # LLM Configuration (Free Tier Models)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash-exp"  # Gemini 2.0 Flash (free, experimental)
+    GEMINI_MODEL: str = "gemini-2.0-flash"  # Gemini 2.0 Flash (free tier)
     GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"  # Latest embedding model (free)
 
     # Slack Configuration

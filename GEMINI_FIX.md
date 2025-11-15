@@ -1,13 +1,13 @@
 # 🔧 Gemini API Model Update - Using Gemini 2.0 (Free Tier)
 
-**Latest Update:** January 2025 - Using Gemini 2.0 Flash Experimental
+**Latest Update:** January 2025 - Using Gemini 2.0 Flash
 
 ## Current Models (Free Tier)
 
 MCP now uses the **latest free Gemini models**:
 
-✅ **Generative Model:** `gemini-2.0-flash-exp`
-- Latest Gemini 2.0 Flash (experimental)
+✅ **Generative Model:** `gemini-2.0-flash`
+- Latest Gemini 2.0 Flash (stable)
 - **Free tier:** 15 RPM (requests per minute)
 - Faster and more capable than 1.5
 - Good for standup processing, summaries, parsing
@@ -25,12 +25,12 @@ Google has updated model names multiple times:
 | Date | Old Model | New Model |
 |------|-----------|-----------|
 | Jan 2025 | `gemini-pro` | `gemini-1.5-flash` |
-| Jan 2025 | `gemini-1.5-flash` | `gemini-2.0-flash-exp` |
+| Jan 2025 | `gemini-1.5-flash` | `gemini-2.0-flash` |
 | Jan 2025 | `embedding-001` | `text-embedding-004` |
 
 ## Free Tier Limits
 
-**Gemini 2.0 Flash Experimental:**
+**Gemini 2.0 Flash:**
 - ✅ 15 requests per minute (RPM)
 - ✅ 1,500 requests per day (RPD)
 - ✅ 1 million tokens per minute (TPM)
@@ -66,13 +66,13 @@ If you need more capacity or different capabilities:
 Edit `backend/config.py`:
 
 ```python
-# For production stability
-GEMINI_MODEL: str = "gemini-2.0-flash-001"
+# For free tier (current)
+GEMINI_MODEL: str = "gemini-2.0-flash"
 
 # For maximum quality (paid)
 GEMINI_MODEL: str = "gemini-1.5-pro-002"
 
-# For free tier (current)
+# For experimental features (free)
 GEMINI_MODEL: str = "gemini-2.0-flash-exp"
 ```
 
@@ -139,7 +139,7 @@ curl http://localhost:8000/health
 
 # Should show:
 {
-  "llm": "gemini-2.0-flash-exp (free)"
+  "llm": "gemini-2.0-flash (free)"
 }
 ```
 
