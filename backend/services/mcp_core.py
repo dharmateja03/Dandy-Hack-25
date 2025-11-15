@@ -85,17 +85,27 @@ class MCPCore:
         Process a standup update
 
         This is where the magic happens:
-        1. Parse with Gemini to extract structured data
-        2. Store in vector DB for semantic search
-        3. Update task statuses in database
-        4. Identify help requests and route them
-        5. Detect blockers and alert manager
+        1. Ensure user exists in database
+        2. Parse with Gemini to extract structured data
+        3. Store in vector DB for semantic search
+        4. Update task statuses in database
+        5. Identify help requests and route them
+        6. Detect blockers and alert manager
         """
         timestamp = timestamp or datetime.utcnow()
 
         logger.info(f"Processing standup for user {user_id}")
 
         try:
+            # Step 0: Ensure user exists in database
+            user = await self.database.get_user(user_id)
+            if not user:
+                logger.info(f"Creating new user {user_id} in database")
+                await self.database.create_user({
+                    "id": user_id,
+                    "name": user_id
+                })
+
             # Step 1: Parse with Gemini
             parsed_data = await self._parse_standup_with_gemini(user_id, message)
 
