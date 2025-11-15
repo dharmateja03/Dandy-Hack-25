@@ -2,11 +2,13 @@
 Standup API endpoints
 """
 
+import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -44,15 +46,21 @@ async def submit_standup(submission: StandupSubmission, request: Request):
         )
 
         # Also save to database
-        await mcp.database.save_standup(
-            user_id=submission.user_id,
-            message=submission.message,
-            parsed_data=result.get('parsed_data', {})
-        )
+        try:
+            await mcp.database.save_standup(
+                user_id=submission.user_id,
+                message=submission.message,
+                parsed_data=result.get('parsed_data', {})
+            )
+        except Exception as db_error:
+            logger.error(f"Error saving standup to database: {db_error}", exc_info=True)
+            # Still return result even if database save fails
+            logger.warning(f"Returning standup result despite database save error")
 
         return result
 
     except Exception as e:
+        logger.error(f"Error processing standup: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
