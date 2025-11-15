@@ -172,11 +172,11 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
 
 
 @app.view("standup_modal")
-def handle_standup_submission(ack, body, client, view):
+async def handle_standup_submission(ack, body, client, view):
     """
     Handle standup modal submission
     """
-    ack()
+    await ack()
 
     user_id = body["user"]["id"]
     values = view["state"]["values"]
@@ -204,7 +204,7 @@ def handle_standup_submission(ack, body, client, view):
 
     # Process standup
     try:
-        asyncio.run(process_standup_response(user_id, standup_message, client))
+        await process_standup_response(user_id, standup_message, client)
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
 
@@ -309,13 +309,13 @@ async def handle_message(event, client, say):
     # Simple heuristic: if message is multi-line or mentions tasks
     if len(text) > 50 or "\n" in text:
         try:
-            asyncio.run(process_standup_response(user_id, text, client))
+            await process_standup_response(user_id, text, client)
         except Exception as e:
             logger.error(f"Error processing standup: {e}")
     else:
         # Handle as query
         try:
-            asyncio.run(process_query(user_id, text, client))
+            await process_query(user_id, text, client)
         except Exception as e:
             logger.error(f"Error processing query: {e}")
 
@@ -335,7 +335,12 @@ async def process_standup_response(user_id: str, message: str, client):
             }
         )
 
+        # Check if request was successful
+        response.raise_for_status()
         result = response.json()
+
+        # Get task updates from parsed_data
+        task_updates = result.get('parsed_data', {}).get('task_updates', [])
 
         # Build response blocks with interactive elements
         blocks = [
@@ -350,7 +355,7 @@ async def process_standup_response(user_id: str, message: str, client):
                     "text": f"I've processed your update:\n" +
                            f"• *Help requests routed:* {len(result.get('help_requests_routed', []))}\n" +
                            f"• *Blockers detected:* {result.get('blockers_detected', 0)}\n" +
-                           f"• *Tasks updated:* {len(result.get('tasks_updated', []))}"
+                           f"• *Tasks updated:* {len(task_updates)}"
                 }
             }
         ]
@@ -384,12 +389,14 @@ async def process_standup_response(user_id: str, message: str, client):
 
         # Notify manager if blockers detected
         if result.get('blockers_detected', 0) > 0:
-            await notify_manager_of_blocker(client, user_id, result.get('blockers', []))
+            blockers_list = result.get('parsed_data', {}).get('blockers', [])
+            blocker_descriptions = [b.get('description', str(b)) for b in blockers_list]
+            await notify_manager_of_blocker(client, user_id, blocker_descriptions)
 
         logger.info(f"Processed standup for {user_id}")
 
     except Exception as e:
-        logger.error(f"Error processing standup: {e}")
+        logger.error(f"Error processing standup: {e}", exc_info=True)
         client.chat_postMessage(
             channel=user_id,
             text="⚠️ Sorry, I had trouble processing your standup. Please try again or contact support."
@@ -464,7 +471,8 @@ def handle_summary_command(ack, command, client):
     ack()
 
     user_id = command["user_id"]
-    days = int(command.get("text", "7"))
+    text = command.get("text", "7").strip()
+    days = int(text) if text else 7
 
     try:
         response = sync_http_client.get(
