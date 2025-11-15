@@ -12,7 +12,7 @@ from services.mcp_core import MCPCore
 from services.vector_db import VectorDBService
 from services.database import DatabaseService
 from services.scheduler import SchedulerService
-from routers import standups, tasks, help_requests, analytics
+from routers import standups, tasks, help_requests, analytics, users
 from config import settings
 
 # Configure logging
@@ -86,6 +86,7 @@ app.include_router(standups.router, prefix="/api/standups", tags=["Standups"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["Tasks"])
 app.include_router(help_requests.router, prefix="/api/help", tags=["Help Requests"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
+app.include_router(users.router, prefix="/api/users", tags=["Users"])
 
 @app.get("/")
 async def root():
