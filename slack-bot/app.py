@@ -203,18 +203,13 @@ def handle_standup_submission(ack, body, client, view):
     if help_needed:
         standup_message += f"\n**Help Needed:**\n{help_needed}\n"
 
-    # Process standup (run async function in background)
+    # Process standup in background thread (now synchronous)
     try:
-        # Create a new event loop for async operations in a background thread
-        def run_async_standup():
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(process_standup_response(user_id, standup_message, client))
-            finally:
-                loop.close()
-
-        thread = threading.Thread(target=run_async_standup, daemon=True)
+        thread = threading.Thread(
+            target=process_standup_response,
+            args=(user_id, standup_message, client),
+            daemon=True
+        )
         thread.start()
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
@@ -331,13 +326,13 @@ async def handle_message(event, client, say):
             logger.error(f"Error processing query: {e}")
 
 
-async def process_standup_response(user_id: str, message: str, client):
+def process_standup_response(user_id: str, message: str, client):
     """
-    Process standup response through MCP with enhanced feedback
+    Process standup response through MCP with enhanced feedback (synchronous version for threading)
     """
     try:
-        # Send to MCP for processing
-        response = await http_client.post(
+        # Send to MCP for processing (use sync client)
+        response = sync_http_client.post(
             "/api/standups/submit",
             json={
                 "user_id": user_id,
@@ -387,22 +382,6 @@ async def process_standup_response(user_id: str, message: str, client):
             text="Standup received!",
             blocks=blocks
         )
-
-        # If help requests were routed, create group chats
-        for help_req in result.get("help_requests_routed", []):
-            if help_req.get("assigned_to"):
-                await create_help_group_chat(
-                    client,
-                    requesting_user=user_id,
-                    helper_user=help_req["assigned_to"],
-                    topic=help_req.get("topic", "Help needed")
-                )
-
-        # Notify manager if blockers detected
-        if result.get('blockers_detected', 0) > 0:
-            blockers_list = result.get('parsed_data', {}).get('blockers', [])
-            blocker_descriptions = [b.get('description', str(b)) for b in blockers_list]
-            await notify_manager_of_blocker(client, user_id, blocker_descriptions)
 
         logger.info(f"Processed standup for {user_id}")
 
