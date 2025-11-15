@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import hashlib
+import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -124,7 +125,7 @@ class VectorDBService:
     ) -> str:
         """Add standup to vector DB"""
 
-        point_id = f"standup_{user_id}_{timestamp.isoformat()}"
+        point_id = str(uuid.uuid4())
 
         embedding = self._generate_embedding(text)
 
@@ -162,7 +163,7 @@ class VectorDBService:
         timestamp = datetime.utcnow()
         text = context_data.get("text", str(context_data))
 
-        point_id = f"{context_type}_{timestamp.isoformat()}"
+        point_id = str(uuid.uuid4())
         embedding = self._generate_embedding(text)
 
         point = PointStruct(

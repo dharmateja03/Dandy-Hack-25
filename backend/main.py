@@ -107,7 +107,7 @@ async def health_check():
     health_status = await mcp_core.health_check()
     return health_status
 
-@app.post("/api/mcp/query")
+@app.get("/api/mcp/query")
 async def query_mcp(query: str, user_id: str):
     """
     Query MCP with natural language
