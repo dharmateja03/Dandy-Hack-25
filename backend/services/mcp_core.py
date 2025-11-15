@@ -204,11 +204,24 @@ Return ONLY valid JSON, no markdown.
 
         try:
             response = self.model.generate_content(prompt)
-            parsed_json = json.loads(response.text.strip())
+            text = response.text.strip()
+
+            # Try to extract JSON from markdown code blocks if present
+            if "```" in text:
+                # Extract content between markdown code blocks
+                start = text.find("```") + 3
+                # Skip "json" if it's there
+                if text[start:start+4] == "json":
+                    start += 4
+                end = text.rfind("```")
+                text = text[start:end].strip()
+
+            parsed_json = json.loads(text)
             return parsed_json
 
-        except json.JSONDecodeError:
-            logger.warning("Gemini response was not valid JSON, using fallback")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Gemini response was not valid JSON: {e}")
+            logger.debug(f"Response text was: {response.text[:200]}")
             # Fallback: basic parsing
             return {
                 "tasks_completed": [],
@@ -221,7 +234,7 @@ Return ONLY valid JSON, no markdown.
                 "key_points": [message]
             }
         except Exception as e:
-            logger.error(f"Error parsing with Gemini: {e}")
+            logger.error(f"Error parsing with Gemini: {e}", exc_info=True)
             raise
 
     async def _update_task_statuses(self, user_id: str, parsed_data: Dict):
