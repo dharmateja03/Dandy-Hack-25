@@ -19,6 +19,7 @@ from datetime import datetime, time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import asyncio
+import re
 from typing import List, Dict, Any
 
 # Configure logging
@@ -46,6 +47,37 @@ scheduler = AsyncIOScheduler()
 
 # Track standup submissions (user_id -> timestamp)
 daily_standup_submissions = {}
+
+
+# ========== HELPER FUNCTIONS ==========
+
+def parse_mentions_from_text(text: str) -> List[str]:
+    """
+    Extract user IDs from @mentions in text
+
+    Slack mentions format: <@U1234567890> or <@U1234567890|username>
+    Returns list of user IDs
+    """
+    if not text:
+        return []
+
+    # Pattern to match Slack user mentions
+    mention_pattern = r'<@([A-Z0-9]+)(?:\|[^>]+)?>'
+    matches = re.findall(mention_pattern, text)
+
+    return matches
+
+
+def extract_issue_description(text: str) -> str:
+    """
+    Remove @mentions from text to get clean issue description
+    """
+    if not text:
+        return ""
+
+    # Remove Slack mentions but keep the rest
+    cleaned = re.sub(r'<@[A-Z0-9]+(?:\|[^>]+)?>', '', text)
+    return cleaned.strip()
 
 
 # ========== STANDUP HANDLERS ==========
@@ -141,7 +173,7 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
                         "type": "plain_text_input",
                         "action_id": "help_input",
                         "multiline": True,
-                        "placeholder": {"type": "plain_text", "text": "What do you need help with?"}
+                        "placeholder": {"type": "plain_text", "text": "@mention person(s) and describe the issue. Example: '@john @sarah need help with API integration'"}
                     },
                     "label": {"type": "plain_text", "text": "🙋 Help Needed (if any)"},
                     "optional": True
@@ -204,7 +236,7 @@ async def handle_standup_submission(ack, body, client, view):
 
     # Process standup
     try:
-        await process_standup_response(user_id, standup_message, client)
+        await process_standup_response(user_id, standup_message, client, help_needed)
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
 
@@ -309,7 +341,7 @@ async def handle_message(event, client, say):
     # Simple heuristic: if message is multi-line or mentions tasks
     if len(text) > 50 or "\n" in text:
         try:
-            await process_standup_response(user_id, text, client)
+            await process_standup_response(user_id, text, client, help_needed_text=None)
         except Exception as e:
             logger.error(f"Error processing standup: {e}")
     else:
@@ -320,11 +352,33 @@ async def handle_message(event, client, say):
             logger.error(f"Error processing query: {e}")
 
 
-async def process_standup_response(user_id: str, message: str, client):
+async def process_standup_response(user_id: str, message: str, client, help_needed_text: str = None):
     """
     Process standup response through MCP with enhanced feedback
+    Supports @mentions in help_needed_text for direct group creation
     """
     try:
+        # Parse @mentions from help needed section
+        mentioned_users = []
+        help_topic = ""
+        direct_help_requests = 0
+
+        if help_needed_text:
+            mentioned_users = parse_mentions_from_text(help_needed_text)
+            help_topic = extract_issue_description(help_needed_text)
+
+            # Create temporary groups with @mentioned users
+            if mentioned_users:
+                logger.info(f"Creating help groups for {user_id} with mentioned users: {mentioned_users}")
+                for mentioned_user in mentioned_users:
+                    await create_help_group_chat(
+                        client,
+                        requesting_user=user_id,
+                        helper_user=mentioned_user,
+                        topic=help_topic or "Help needed"
+                    )
+                    direct_help_requests += 1
+
         # Send to MCP for processing
         response = await http_client.post(
             "/api/standups/submit",
@@ -342,6 +396,10 @@ async def process_standup_response(user_id: str, message: str, client):
         # Get task updates from parsed_data
         task_updates = result.get('parsed_data', {}).get('task_updates', [])
 
+        # Count total help requests (direct @mentions + auto-routed)
+        auto_routed_count = len(result.get('help_requests_routed', []))
+        total_help_requests = direct_help_requests + auto_routed_count
+
         # Build response blocks with interactive elements
         blocks = [
             {
@@ -353,12 +411,23 @@ async def process_standup_response(user_id: str, message: str, client):
                 "text": {
                     "type": "mrkdwn",
                     "text": f"I've processed your update:\n" +
-                           f"• *Help requests routed:* {len(result.get('help_requests_routed', []))}\n" +
+                           f"• *Help requests created:* {total_help_requests}\n" +
                            f"• *Blockers detected:* {result.get('blockers_detected', 0)}\n" +
                            f"• *Tasks updated:* {len(task_updates)}"
                 }
             }
         ]
+
+        # Add help request confirmation if any
+        if direct_help_requests > 0:
+            mentioned_names = " ".join([f"<@{uid}>" for uid in mentioned_users])
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"👥 *Temporary groups created* with {mentioned_names}"
+                }
+            })
 
         # Add blocker alert if any
         if result.get('blockers_detected', 0) > 0:
@@ -377,15 +446,16 @@ async def process_standup_response(user_id: str, message: str, client):
             blocks=blocks
         )
 
-        # If help requests were routed, create group chats
-        for help_req in result.get("help_requests_routed", []):
-            if help_req.get("assigned_to"):
-                await create_help_group_chat(
-                    client,
-                    requesting_user=user_id,
-                    helper_user=help_req["assigned_to"],
-                    topic=help_req.get("topic", "Help needed")
-                )
+        # If help requests were auto-routed (no @mentions), create group chats
+        if not mentioned_users:
+            for help_req in result.get("help_requests_routed", []):
+                if help_req.get("assigned_to"):
+                    await create_help_group_chat(
+                        client,
+                        requesting_user=user_id,
+                        helper_user=help_req["assigned_to"],
+                        topic=help_req.get("topic", "Help needed")
+                    )
 
         # Notify manager if blockers detected
         if result.get('blockers_detected', 0) > 0:
@@ -433,7 +503,7 @@ async def process_query(user_id: str, query: str, client):
 
 async def create_help_group_chat(client, requesting_user: str, helper_user: str, topic: str):
     """
-    Create a 3-person group chat: requesting user + helper + MCP bot
+    Create a temporary group chat: requesting user + helper + MCP bot
 
     This is where the magic happens - MCP learns from these conversations
     """
@@ -445,19 +515,48 @@ async def create_help_group_chat(client, requesting_user: str, helper_user: str,
 
         channel_id = response["channel"]["id"]
 
-        # Send introductory message
+        # Send introductory message with better formatting
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"🙋 Help Request: {topic[:50]}"}
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"<@{requesting_user}> needs help from <@{helper_user}>."
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Issue:* {topic}\n\n" +
+                           f"_This is a temporary group chat. I'm here to:_\n" +
+                           f"• 📝 Learn from this conversation\n" +
+                           f"• ⏰ Send reminders if needed\n" +
+                           f"• 💾 Log the solution for future reference"
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "💡 React with ✅ when this issue is resolved!"
+                    }
+                ]
+            }
+        ]
+
         await client.chat_postMessage(
             channel=channel_id,
-            text=f"👋 *Help Request: {topic}*\n\n" +
-                 f"<@{requesting_user}> needs help from <@{helper_user}>.\n\n" +
-                 f"I'm here to:\n" +
-                 f"• Learn from this conversation\n" +
-                 f"• Remind if needed\n" +
-                 f"• Log the solution for future reference\n\n" +
-                 f"Let me know when this is resolved!"
+            text=f"Help Request: {topic}",
+            blocks=blocks
         )
 
-        logger.info(f"Created help group chat: {requesting_user} -> {helper_user}")
+        logger.info(f"Created help group chat: {requesting_user} -> {helper_user} for topic: {topic}")
 
     except Exception as e:
         logger.error(f"Error creating help group chat: {e}")
@@ -1012,9 +1111,9 @@ async def handle_request_help_button(ack, body, client):
                     "type": "plain_text_input",
                     "action_id": "details_input",
                     "multiline": True,
-                    "placeholder": {"type": "plain_text", "text": "Provide more details..."}
+                    "placeholder": {"type": "plain_text", "text": "@mention specific people or describe your issue for auto-routing"}
                 },
-                "label": {"type": "plain_text", "text": "Details"}
+                "label": {"type": "plain_text", "text": "Details (optional: @mention people)"}
             }
         ]
     }
@@ -1024,41 +1123,69 @@ async def handle_request_help_button(ack, body, client):
 
 @app.view("help_request_modal")
 async def handle_help_request_submission(ack, body, client, view):
-    """Handle help request submission"""
+    """
+    Handle help request submission
+    Supports @mentions for direct group creation or auto-routing
+    """
     await ack()
 
     user_id = body["user"]["id"]
     topic = view["state"]["values"]["help_topic"]["topic_input"]["value"]
     details = view["state"]["values"]["help_details"]["details_input"]["value"]
 
-    # Route help request through MCP
+    # Parse @mentions from details
+    mentioned_users = parse_mentions_from_text(details)
+    clean_details = extract_issue_description(details)
+
     try:
-        response = await http_client.post(
-            "/api/help/create",
-            json={
-                "requester_id": user_id,
-                "topic": topic,
-                "details": details
-            }
-        )
+        # If users are @mentioned, create direct groups
+        if mentioned_users:
+            logger.info(f"Creating help groups for {user_id} with mentioned users: {mentioned_users}")
+            for mentioned_user in mentioned_users:
+                await create_help_group_chat(
+                    client,
+                    requesting_user=user_id,
+                    helper_user=mentioned_user,
+                    topic=topic
+                )
 
-        result = response.json()
-        assigned_to = result.get("assigned_to")
-
-        if assigned_to:
-            await create_help_group_chat(client, user_id, assigned_to, topic)
+            mentioned_names = ", ".join([f"<@{uid}>" for uid in mentioned_users])
             await client.chat_postMessage(
                 channel=user_id,
-                text=f"✅ Help request routed to <@{assigned_to}>! They'll reach out shortly."
+                text=f"✅ Temporary help groups created with {mentioned_names}! They'll reach out shortly."
             )
         else:
-            await client.chat_postMessage(
-                channel=user_id,
-                text="✅ Help request submitted! Looking for the best person to help..."
+            # Auto-route through MCP if no @mentions
+            response = await http_client.post(
+                "/api/help/create",
+                json={
+                    "requester_id": user_id,
+                    "topic": topic,
+                    "details": clean_details or details
+                }
             )
+
+            result = response.json()
+            assigned_to = result.get("assigned_to")
+
+            if assigned_to:
+                await create_help_group_chat(client, user_id, assigned_to, topic)
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=f"✅ Help request routed to <@{assigned_to}>! They'll reach out shortly."
+                )
+            else:
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text="✅ Help request submitted! Looking for the best person to help..."
+                )
 
     except Exception as e:
         logger.error(f"Error creating help request: {e}")
+        await client.chat_postMessage(
+            channel=user_id,
+            text="⚠️ Sorry, I couldn't process your help request. Please try again."
+        )
 
 
 # ========== SCHEDULED JOBS ==========
