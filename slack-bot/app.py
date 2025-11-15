@@ -38,7 +38,7 @@ STANDUP_TIME = os.environ.get("STANDUP_TIME", "09:00")  # 9 AM daily
 app = App(token=SLACK_BOT_TOKEN)
 
 # HTTP client for MCP API
-http_client = httpx.AsyncClient(base_url=MCP_API_URL, timeout=30.0)
+http_client = httpx.Client(base_url=MCP_API_URL, timeout=30.0)
 
 # Scheduler for automated tasks
 scheduler = AsyncIOScheduler()
@@ -50,20 +50,23 @@ daily_standup_submissions = {}
 # ========== STANDUP HANDLERS ==========
 
 @app.command("/standup")
-async def handle_standup_command(ack, command, client):
+def handle_standup_command(ack, command, client):
     """
     Trigger standup via slash command - Opens interactive modal
     """
-    await ack()
+    ack()
 
     user_id = command["user_id"]
     trigger_id = command["trigger_id"]
 
-    # Open standup modal
-    await open_standup_modal(client, user_id, trigger_id)
+    # Run async function in new event loop
+    try:
+        open_standup_modal(client, user_id, trigger_id)
+    except Exception as e:
+        logger.error(f"Error opening standup modal: {e}")
 
 
-async def open_standup_modal(client, user_id: str, trigger_id: str):
+def open_standup_modal(client, user_id: str, trigger_id: str):
     """
     Open interactive modal for standup submission
     """
@@ -71,7 +74,7 @@ async def open_standup_modal(client, user_id: str, trigger_id: str):
         # Get user's current tasks from MCP
         tasks = []
         try:
-            response = await http_client.get(f"/api/tasks/user/{user_id}")
+            response = http_client.get(f"/api/tasks/user/{user_id}")
             tasks = response.json().get("tasks", [])
         except Exception as e:
             logger.warning(f"Couldn't fetch tasks for {user_id}: {e}")
@@ -160,7 +163,7 @@ async def open_standup_modal(client, user_id: str, trigger_id: str):
                 "optional": True
             })
 
-        await client.views_open(trigger_id=trigger_id, view=modal_view)
+        client.views_open(trigger_id=trigger_id, view=modal_view)
         logger.info(f"Opened standup modal for {user_id}")
 
     except Exception as e:
@@ -168,11 +171,11 @@ async def open_standup_modal(client, user_id: str, trigger_id: str):
 
 
 @app.view("standup_modal")
-async def handle_standup_submission(ack, body, client, view):
+def handle_standup_submission(ack, body, client, view):
     """
     Handle standup modal submission
     """
-    await ack()
+    ack()
 
     user_id = body["user"]["id"]
     values = view["state"]["values"]
@@ -199,7 +202,10 @@ async def handle_standup_submission(ack, body, client, view):
         standup_message += f"\n**Help Needed:**\n{help_needed}\n"
 
     # Process standup
-    await process_standup_response(user_id, standup_message, client)
+    try:
+        asyncio.run(process_standup_response(user_id, standup_message, client))
+    except Exception as e:
+        logger.error(f"Error processing standup: {e}")
 
     # Track submission
     daily_standup_submissions[user_id] = datetime.utcnow()
@@ -251,7 +257,7 @@ async def send_standup_questions(client, user_id):
             }
         ]
 
-        result = await client.chat_postMessage(
+        result = client.chat_postMessage(
             channel=user_id,
             text="Time for your standup!",
             blocks=blocks
@@ -301,10 +307,16 @@ async def handle_message(event, client, say):
     # Check if this is a standup response
     # Simple heuristic: if message is multi-line or mentions tasks
     if len(text) > 50 or "\n" in text:
-        await process_standup_response(user_id, text, client)
+        try:
+            asyncio.run(process_standup_response(user_id, text, client))
+        except Exception as e:
+            logger.error(f"Error processing standup: {e}")
     else:
         # Handle as query
-        await process_query(user_id, text, client)
+        try:
+            asyncio.run(process_query(user_id, text, client))
+        except Exception as e:
+            logger.error(f"Error processing query: {e}")
 
 
 async def process_standup_response(user_id: str, message: str, client):
@@ -353,7 +365,7 @@ async def process_standup_response(user_id: str, message: str, client):
             })
 
         # Acknowledge receipt
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="Standup received!",
             blocks=blocks
@@ -377,7 +389,7 @@ async def process_standup_response(user_id: str, message: str, client):
 
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="⚠️ Sorry, I had trouble processing your standup. Please try again or contact support."
         )
@@ -396,14 +408,14 @@ async def process_query(user_id: str, query: str, client):
         result = response.json()
         answer = result.get("answer", "I'm not sure how to answer that.")
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text=answer
         )
 
     except Exception as e:
         logger.error(f"Error processing query: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="⚠️ Sorry, I couldn't process your query. Please try again."
         )
@@ -411,7 +423,7 @@ async def process_query(user_id: str, query: str, client):
 
 # ========== HELP REQUEST HANDLERS ==========
 
-async def create_help_group_chat(client, requesting_user: str, helper_user: str, topic: str):
+def create_help_group_chat(client, requesting_user: str, helper_user: str, topic: str):
     """
     Create a 3-person group chat: requesting user + helper + MCP bot
 
@@ -419,14 +431,14 @@ async def create_help_group_chat(client, requesting_user: str, helper_user: str,
     """
     try:
         # Create group DM
-        response = await client.conversations_open(
+        response = client.conversations_open(
             users=[requesting_user, helper_user]
         )
 
         channel_id = response["channel"]["id"]
 
         # Send introductory message
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=channel_id,
             text=f"👋 *Help Request: {topic}*\n\n" +
                  f"<@{requesting_user}> needs help from <@{helper_user}>.\n\n" +
@@ -549,7 +561,7 @@ async def handle_mention(event, client):
     query = text.split(">", 1)[1].strip() if ">" in text else text
 
     try:
-        response = await http_client.post(
+        response = http_client.post(
             "/api/mcp/query",
             params={"query": query, "user_id": user_id}
         )
@@ -557,7 +569,7 @@ async def handle_mention(event, client):
         result = response.json()
         answer = result.get("answer", "I'm not sure how to answer that.")
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=channel,
             thread_ts=event.get("ts"),
             text=f"<@{user_id}> {answer}"
@@ -569,13 +581,13 @@ async def handle_mention(event, client):
 
 # ========== NOTIFICATION SYSTEM ==========
 
-async def notify_manager_of_blocker(client, user_id: str, blockers: List[str]):
+def notify_manager_of_blocker(client, user_id: str, blockers: List[str]):
     """
     Notify manager when team member reports blocker
     """
     try:
         # Get user's manager from MCP
-        response = await http_client.get(f"/api/users/{user_id}")
+        response = http_client.get(f"/api/users/{user_id}")
         user_data = response.json()
         manager_id = user_data.get("manager_id")
 
@@ -615,7 +627,7 @@ async def notify_manager_of_blocker(client, user_id: str, blockers: List[str]):
             }
         ]
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=manager_id,
             text=f"Blocker alert from {user_id}",
             blocks=blocks
