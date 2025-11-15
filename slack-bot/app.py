@@ -459,42 +459,42 @@ async def create_help_group_chat(client, requesting_user: str, helper_user: str,
 # ========== MANAGER COMMANDS ==========
 
 @app.command("/mcp-summary")
-async def handle_summary_command(ack, command, client):
+def handle_summary_command(ack, command, client):
     """Manager command to get team summary"""
-    await ack()
+    ack()
 
     user_id = command["user_id"]
     days = int(command.get("text", "7"))
 
     try:
-        response = await http_client.get(
+        response = sync_http_client.get(
             f"/api/analytics/summary",
             params={"days": days}
         )
 
         summary = response.json().get("summary", "No summary available")
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text=f"📊 *Team Summary (Last {days} Days)*\n\n{summary}"
         )
 
     except Exception as e:
         logger.error(f"Error fetching summary: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="⚠️ Couldn't fetch team summary. Please try again."
         )
 
 
 @app.command("/mcp-assign")
-async def handle_assign_command(ack, command, client):
+def handle_assign_command(ack, command, client):
     """
     Manager command to assign tasks
 
     Usage: /mcp-assign @user task description [priority]
     """
-    await ack()
+    ack()
 
     # Parse command
     # Format: @user task description priority
@@ -502,7 +502,7 @@ async def handle_assign_command(ack, command, client):
     parts = text.split(maxsplit=2)
 
     if len(parts) < 2:
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=command["user_id"],
             text="Usage: `/mcp-assign @user task description [priority]`"
         )
@@ -513,7 +513,7 @@ async def handle_assign_command(ack, command, client):
     priority = parts[2] if len(parts) > 2 else "medium"
 
     try:
-        response = await http_client.post(
+        response = sync_http_client.post(
             "/api/tasks/assign",
             params={
                 "task_title": task_title,
@@ -523,7 +523,7 @@ async def handle_assign_command(ack, command, client):
         )
 
         # Notify assignee
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=assignee,
             text=f"📋 *New Task Assigned*\n\n" +
                  f"*Task:* {task_title}\n" +
@@ -532,14 +532,14 @@ async def handle_assign_command(ack, command, client):
         )
 
         # Confirm to manager
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=command["user_id"],
             text=f"✅ Task assigned to <@{assignee}>"
         )
 
     except Exception as e:
         logger.error(f"Error assigning task: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=command["user_id"],
             text="⚠️ Couldn't assign task. Please try again."
         )
