@@ -205,11 +205,16 @@ def handle_standup_submission(ack, body, client, view):
 
     # Process standup (run async function in background)
     try:
-        # Create a new event loop for async operations
-        thread = threading.Thread(
-            target=lambda: asyncio.run(process_standup_response(user_id, standup_message, client)),
-            daemon=True
-        )
+        # Create a new event loop for async operations in a background thread
+        def run_async_standup():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(process_standup_response(user_id, standup_message, client))
+            finally:
+                loop.close()
+
+        thread = threading.Thread(target=run_async_standup, daemon=True)
         thread.start()
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
