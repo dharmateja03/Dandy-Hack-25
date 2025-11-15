@@ -39,6 +39,7 @@ app = App(token=SLACK_BOT_TOKEN)
 
 # HTTP client for MCP API
 http_client = httpx.AsyncClient(base_url=MCP_API_URL, timeout=30.0)
+sync_http_client = httpx.Client(base_url=MCP_API_URL, timeout=30.0)
 
 # Scheduler for automated tasks
 scheduler = AsyncIOScheduler()
@@ -50,20 +51,23 @@ daily_standup_submissions = {}
 # ========== STANDUP HANDLERS ==========
 
 @app.command("/standup")
-async def handle_standup_command(ack, command, client):
+def handle_standup_command(ack, command, client):
     """
     Trigger standup via slash command - Opens interactive modal
     """
-    await ack()
+    ack()
 
     user_id = command["user_id"]
     trigger_id = command["trigger_id"]
 
-    # Open standup modal
-    await open_standup_modal(client, user_id, trigger_id)
+    # Run async function in new event loop
+    try:
+        open_standup_modal(client, user_id, trigger_id)
+    except Exception as e:
+        logger.error(f"Error opening standup modal: {e}")
 
 
-async def open_standup_modal(client, user_id: str, trigger_id: str):
+def open_standup_modal(client, user_id: str, trigger_id: str):
     """
     Open interactive modal for standup submission
     """
@@ -71,7 +75,7 @@ async def open_standup_modal(client, user_id: str, trigger_id: str):
         # Get user's current tasks from MCP
         tasks = []
         try:
-            response = await http_client.get(f"/api/tasks/user/{user_id}")
+            response = sync_http_client.get(f"/api/tasks/user/{user_id}")
             tasks = response.json().get("tasks", [])
         except Exception as e:
             logger.warning(f"Couldn't fetch tasks for {user_id}: {e}")
@@ -160,7 +164,7 @@ async def open_standup_modal(client, user_id: str, trigger_id: str):
                 "optional": True
             })
 
-        await client.views_open(trigger_id=trigger_id, view=modal_view)
+        client.views_open(trigger_id=trigger_id, view=modal_view)
         logger.info(f"Opened standup modal for {user_id}")
 
     except Exception as e:
@@ -199,7 +203,10 @@ async def handle_standup_submission(ack, body, client, view):
         standup_message += f"\n**Help Needed:**\n{help_needed}\n"
 
     # Process standup
-    await process_standup_response(user_id, standup_message, client)
+    try:
+        await process_standup_response(user_id, standup_message, client)
+    except Exception as e:
+        logger.error(f"Error processing standup: {e}")
 
     # Track submission
     daily_standup_submissions[user_id] = datetime.utcnow()
@@ -251,7 +258,7 @@ async def send_standup_questions(client, user_id):
             }
         ]
 
-        result = await client.chat_postMessage(
+        result = client.chat_postMessage(
             channel=user_id,
             text="Time for your standup!",
             blocks=blocks
@@ -301,10 +308,16 @@ async def handle_message(event, client, say):
     # Check if this is a standup response
     # Simple heuristic: if message is multi-line or mentions tasks
     if len(text) > 50 or "\n" in text:
-        await process_standup_response(user_id, text, client)
+        try:
+            await process_standup_response(user_id, text, client)
+        except Exception as e:
+            logger.error(f"Error processing standup: {e}")
     else:
         # Handle as query
-        await process_query(user_id, text, client)
+        try:
+            await process_query(user_id, text, client)
+        except Exception as e:
+            logger.error(f"Error processing query: {e}")
 
 
 async def process_standup_response(user_id: str, message: str, client):
@@ -322,7 +335,12 @@ async def process_standup_response(user_id: str, message: str, client):
             }
         )
 
+        # Check if request was successful
+        response.raise_for_status()
         result = response.json()
+
+        # Get task updates from parsed_data
+        task_updates = result.get('parsed_data', {}).get('task_updates', [])
 
         # Build response blocks with interactive elements
         blocks = [
@@ -337,7 +355,7 @@ async def process_standup_response(user_id: str, message: str, client):
                     "text": f"I've processed your update:\n" +
                            f"• *Help requests routed:* {len(result.get('help_requests_routed', []))}\n" +
                            f"• *Blockers detected:* {result.get('blockers_detected', 0)}\n" +
-                           f"• *Tasks updated:* {len(result.get('tasks_updated', []))}"
+                           f"• *Tasks updated:* {len(task_updates)}"
                 }
             }
         ]
@@ -353,7 +371,7 @@ async def process_standup_response(user_id: str, message: str, client):
             })
 
         # Acknowledge receipt
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="Standup received!",
             blocks=blocks
@@ -371,13 +389,15 @@ async def process_standup_response(user_id: str, message: str, client):
 
         # Notify manager if blockers detected
         if result.get('blockers_detected', 0) > 0:
-            await notify_manager_of_blocker(client, user_id, result.get('blockers', []))
+            blockers_list = result.get('parsed_data', {}).get('blockers', [])
+            blocker_descriptions = [b.get('description', str(b)) for b in blockers_list]
+            await notify_manager_of_blocker(client, user_id, blocker_descriptions)
 
         logger.info(f"Processed standup for {user_id}")
 
     except Exception as e:
-        logger.error(f"Error processing standup: {e}")
-        await client.chat_postMessage(
+        logger.error(f"Error processing standup: {e}", exc_info=True)
+        client.chat_postMessage(
             channel=user_id,
             text="⚠️ Sorry, I had trouble processing your standup. Please try again or contact support."
         )
@@ -396,14 +416,14 @@ async def process_query(user_id: str, query: str, client):
         result = response.json()
         answer = result.get("answer", "I'm not sure how to answer that.")
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text=answer
         )
 
     except Exception as e:
         logger.error(f"Error processing query: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="⚠️ Sorry, I couldn't process your query. Please try again."
         )
@@ -446,42 +466,43 @@ async def create_help_group_chat(client, requesting_user: str, helper_user: str,
 # ========== MANAGER COMMANDS ==========
 
 @app.command("/mcp-summary")
-async def handle_summary_command(ack, command, client):
+def handle_summary_command(ack, command, client):
     """Manager command to get team summary"""
-    await ack()
+    ack()
 
     user_id = command["user_id"]
-    days = int(command.get("text", "7"))
+    text = command.get("text", "7").strip()
+    days = int(text) if text else 7
 
     try:
-        response = await http_client.get(
+        response = sync_http_client.get(
             f"/api/analytics/summary",
             params={"days": days}
         )
 
         summary = response.json().get("summary", "No summary available")
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text=f"📊 *Team Summary (Last {days} Days)*\n\n{summary}"
         )
 
     except Exception as e:
         logger.error(f"Error fetching summary: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=user_id,
             text="⚠️ Couldn't fetch team summary. Please try again."
         )
 
 
 @app.command("/mcp-assign")
-async def handle_assign_command(ack, command, client):
+def handle_assign_command(ack, command, client):
     """
     Manager command to assign tasks
 
     Usage: /mcp-assign @user task description [priority]
     """
-    await ack()
+    ack()
 
     # Parse command
     # Format: @user task description priority
@@ -489,7 +510,7 @@ async def handle_assign_command(ack, command, client):
     parts = text.split(maxsplit=2)
 
     if len(parts) < 2:
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=command["user_id"],
             text="Usage: `/mcp-assign @user task description [priority]`"
         )
@@ -500,7 +521,7 @@ async def handle_assign_command(ack, command, client):
     priority = parts[2] if len(parts) > 2 else "medium"
 
     try:
-        response = await http_client.post(
+        response = sync_http_client.post(
             "/api/tasks/assign",
             params={
                 "task_title": task_title,
@@ -510,7 +531,7 @@ async def handle_assign_command(ack, command, client):
         )
 
         # Notify assignee
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=assignee,
             text=f"📋 *New Task Assigned*\n\n" +
                  f"*Task:* {task_title}\n" +
@@ -519,14 +540,14 @@ async def handle_assign_command(ack, command, client):
         )
 
         # Confirm to manager
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=command["user_id"],
             text=f"✅ Task assigned to <@{assignee}>"
         )
 
     except Exception as e:
         logger.error(f"Error assigning task: {e}")
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=command["user_id"],
             text="⚠️ Couldn't assign task. Please try again."
         )
@@ -535,7 +556,7 @@ async def handle_assign_command(ack, command, client):
 # ========== APP MENTION ==========
 
 @app.event("app_mention")
-async def handle_mention(event, client):
+def handle_mention(event, client):
     """
     Handle @MCP mentions in channels
 
@@ -549,7 +570,7 @@ async def handle_mention(event, client):
     query = text.split(">", 1)[1].strip() if ">" in text else text
 
     try:
-        response = await http_client.post(
+        response = sync_http_client.post(
             "/api/mcp/query",
             params={"query": query, "user_id": user_id}
         )
@@ -557,7 +578,7 @@ async def handle_mention(event, client):
         result = response.json()
         answer = result.get("answer", "I'm not sure how to answer that.")
 
-        await client.chat_postMessage(
+        client.chat_postMessage(
             channel=channel,
             thread_ts=event.get("ts"),
             text=f"<@{user_id}> {answer}"
