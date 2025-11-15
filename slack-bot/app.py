@@ -38,7 +38,8 @@ STANDUP_TIME = os.environ.get("STANDUP_TIME", "09:00")  # 9 AM daily
 app = App(token=SLACK_BOT_TOKEN)
 
 # HTTP client for MCP API
-http_client = httpx.Client(base_url=MCP_API_URL, timeout=30.0)
+http_client = httpx.AsyncClient(base_url=MCP_API_URL, timeout=30.0)
+sync_http_client = httpx.Client(base_url=MCP_API_URL, timeout=30.0)
 
 # Scheduler for automated tasks
 scheduler = AsyncIOScheduler()
@@ -74,7 +75,7 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
         # Get user's current tasks from MCP
         tasks = []
         try:
-            response = http_client.get(f"/api/tasks/user/{user_id}")
+            response = sync_http_client.get(f"/api/tasks/user/{user_id}")
             tasks = response.json().get("tasks", [])
         except Exception as e:
             logger.warning(f"Couldn't fetch tasks for {user_id}: {e}")
@@ -423,7 +424,7 @@ async def process_query(user_id: str, query: str, client):
 
 # ========== HELP REQUEST HANDLERS ==========
 
-def create_help_group_chat(client, requesting_user: str, helper_user: str, topic: str):
+async def create_help_group_chat(client, requesting_user: str, helper_user: str, topic: str):
     """
     Create a 3-person group chat: requesting user + helper + MCP bot
 
@@ -431,14 +432,14 @@ def create_help_group_chat(client, requesting_user: str, helper_user: str, topic
     """
     try:
         # Create group DM
-        response = client.conversations_open(
+        response = await client.conversations_open(
             users=[requesting_user, helper_user]
         )
 
         channel_id = response["channel"]["id"]
 
         # Send introductory message
-        client.chat_postMessage(
+        await client.chat_postMessage(
             channel=channel_id,
             text=f"👋 *Help Request: {topic}*\n\n" +
                  f"<@{requesting_user}> needs help from <@{helper_user}>.\n\n" +
@@ -547,7 +548,7 @@ async def handle_assign_command(ack, command, client):
 # ========== APP MENTION ==========
 
 @app.event("app_mention")
-async def handle_mention(event, client):
+def handle_mention(event, client):
     """
     Handle @MCP mentions in channels
 
@@ -561,7 +562,7 @@ async def handle_mention(event, client):
     query = text.split(">", 1)[1].strip() if ">" in text else text
 
     try:
-        response = http_client.post(
+        response = sync_http_client.post(
             "/api/mcp/query",
             params={"query": query, "user_id": user_id}
         )
@@ -581,13 +582,13 @@ async def handle_mention(event, client):
 
 # ========== NOTIFICATION SYSTEM ==========
 
-def notify_manager_of_blocker(client, user_id: str, blockers: List[str]):
+async def notify_manager_of_blocker(client, user_id: str, blockers: List[str]):
     """
     Notify manager when team member reports blocker
     """
     try:
         # Get user's manager from MCP
-        response = http_client.get(f"/api/users/{user_id}")
+        response = await http_client.get(f"/api/users/{user_id}")
         user_data = response.json()
         manager_id = user_data.get("manager_id")
 
@@ -627,7 +628,7 @@ def notify_manager_of_blocker(client, user_id: str, blockers: List[str]):
             }
         ]
 
-        client.chat_postMessage(
+        await client.chat_postMessage(
             channel=manager_id,
             text=f"Blocker alert from {user_id}",
             blocks=blocks
