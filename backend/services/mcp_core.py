@@ -44,10 +44,10 @@ class MCPCore:
     async def initialize(self):
         """Initialize MCP services"""
         try:
-            # Initialize Gemini
+            # Initialize Gemini 2.0 (free tier)
             genai.configure(api_key=self.gemini_api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
-            logger.info("✅ Gemini initialized with gemini-1.5-flash")
+            self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            logger.info("✅ Gemini 2.0 Flash initialized (experimental, free tier)")
 
             # Initialize Vector DB
             await self.vector_db.initialize()
@@ -72,7 +72,7 @@ class MCPCore:
             "mcp_status": "healthy",
             "vector_db": await self.vector_db.health_check(),
             "database": await self.database.health_check(),
-            "llm": "gemini-1.5-flash" if self.model else "not initialized"
+            "llm": "gemini-2.0-flash-exp (free)" if self.model else "not initialized"
         }
 
     async def process_standup(

@@ -21,10 +21,10 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_NAME: str = "mcp_context"
     EMBEDDING_DIMENSION: int = 768
 
-    # LLM Configuration
+    # LLM Configuration (Free Tier Models)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"  # Updated model name
-    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"  # Updated embedding model
+    GEMINI_MODEL: str = "gemini-2.0-flash-exp"  # Gemini 2.0 Flash (free, experimental)
+    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"  # Latest embedding model (free)
 
     # Slack Configuration
     SLACK_BOT_TOKEN: Optional[str] = None
