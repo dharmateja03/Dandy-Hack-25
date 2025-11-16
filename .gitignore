@@ -1,7 +1,11 @@
-# Environment variables
+# Environment variables & credentials
 .env
 .env.local
 .env.*.local
+credentials.json
+token.json
+backend/credentials.json
+backend/token.json
 
 # Python
 __pycache__/
