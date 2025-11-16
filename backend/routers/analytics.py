@@ -449,8 +449,10 @@ async def get_today_digest(request: Request = None):
         blockers_detected = sum(1 for t in tasks if t.get("status") == "blocked")
 
         # Get help requests
+        help_requests_count = 0
+        outstanding_help = []
         async with db.async_session() as session:
-            from services.database import HelpRequest, HelpRequestStatus
+            from services.database import HelpRequest, HelpRequestStatus, User
             from sqlalchemy import select, func
 
             help_result = await session.execute(
@@ -458,7 +460,45 @@ async def get_today_digest(request: Request = None):
                     HelpRequest.status == HelpRequestStatus.PENDING
                 )
             )
-            help_requests = help_result.scalar() or 0
+            help_requests_count = help_result.scalar() or 0
+
+            # Get actual pending help requests
+            pending_help = await session.execute(
+                select(HelpRequest).where(
+                    HelpRequest.status == HelpRequestStatus.PENDING
+                ).limit(5)
+            )
+            help_data = pending_help.scalars().all()
+
+            for hr in help_data:
+                outstanding_help.append({
+                    "topic": hr.topic or "General Help",
+                    "from": getattr(hr, 'from_user_name', 'Unknown'),
+                    "status": hr.status.value if hr.status else "pending"
+                })
+
+        # Get blockers with details
+        major_blockers = []
+        async with db.async_session() as session:
+            from services.database import BlockerAlert, User
+            from sqlalchemy import select
+
+            blockers = await session.execute(
+                select(BlockerAlert).where(
+                    BlockerAlert.is_resolved == False
+                ).limit(5)
+            )
+            blocker_data = blockers.scalars().all()
+
+            for blocker in blocker_data:
+                major_blockers.append({
+                    "description": blocker.description,
+                    "owner": getattr(blocker, 'user_name', 'Unknown'),
+                    "severity": blocker.severity or "medium"
+                })
+
+        # Get standups count
+        standups = await db.get_recent_standups(days=1) if hasattr(db, 'get_recent_standups') else []
 
         # Calculate productivity level
         total_tasks = tasks_completed + tasks_in_progress + blockers_detected
@@ -475,8 +515,8 @@ async def get_today_digest(request: Request = None):
                 "tasks_completed": tasks_completed,
                 "tasks_in_progress": tasks_in_progress,
                 "blockers_detected": blockers_detected,
-                "help_requests": help_requests,
-                "total_standups": len(standups) if 'standups' in locals() else 0
+                "help_requests": help_requests_count,
+                "total_standups": len(standups) if standups else 0
             },
             "key_metrics": {
                 "completion_rate": int((tasks_completed / (tasks_completed + tasks_in_progress) * 100) if (tasks_completed + tasks_in_progress) > 0 else 0),
@@ -485,12 +525,22 @@ async def get_today_digest(request: Request = None):
                 "team_mood": "😊" if productivity == "high" else "😐" if productivity == "moderate" else "😟",
                 "productivity": productivity
             },
-            "highlights": [
-                f"✅ {tasks_completed} tasks completed",
-                f"⚙️ {tasks_in_progress} tasks in progress",
-                f"🚨 {blockers_detected} blockers detected"
-            ],
-            "recommendations": []
+            "highlights": {
+                "major_blockers": major_blockers,
+                "outstanding_help_requests": outstanding_help
+            },
+            "recommendations": {
+                "action_items": [
+                    f"Resolve {blockers_detected} active blockers",
+                    f"Respond to {help_requests_count} help requests",
+                    f"Complete {tasks_in_progress} in-progress tasks"
+                ] if (blockers_detected + help_requests_count + tasks_in_progress) > 0 else ["Keep up the good work!"],
+                "priorities_for_tomorrow": [
+                    "Follow up on unresolved blockers",
+                    "Check pending help requests",
+                    "Plan next day's tasks"
+                ]
+            }
         }
 
     except Exception as e:
@@ -512,8 +562,14 @@ async def get_today_digest(request: Request = None):
                 "team_mood": "😟",
                 "productivity": "low"
             },
-            "highlights": [],
-            "recommendations": []
+            "highlights": {
+                "major_blockers": [],
+                "outstanding_help_requests": []
+            },
+            "recommendations": {
+                "action_items": [],
+                "priorities_for_tomorrow": []
+            }
         }
 
 

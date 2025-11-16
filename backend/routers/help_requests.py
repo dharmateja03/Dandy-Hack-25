@@ -12,6 +12,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/")
+async def get_all_help_requests(request: Request):
+    """Get all help requests"""
+    try:
+        db = request.app.state.db
+        async with db.async_session() as session:
+            from services.database import HelpRequest, HelpRequestStatus
+            from sqlalchemy import select
+            
+            result = await session.execute(
+                select(HelpRequest).order_by(HelpRequest.created_at.desc())
+            )
+            requests = result.scalars().all()
+            
+            return [
+                {
+                    "id": str(r.id),
+                    "requester_id": r.requester_id,
+                    "requester_name": r.requester_name,
+                    "topic": r.topic,
+                    "description": r.description,
+                    "status": r.status.value if r.status else "pending",
+                    "expert_id": r.expert_id,
+                    "expert_name": r.expert_name,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in requests
+            ]
+    except Exception as e:
+        logger.error(f"Error fetching help requests: {e}")
+        return []
+
+
 # Request/Response Models
 class HelpRequestCreate(BaseModel):
     requester_id: str
@@ -105,6 +138,7 @@ async def get_active_help_requests(request: Request = None):
                     "helper_name": None,  # TODO: Get helper name when assigned
                     "topic": req.topic,
                     "urgency": req.urgency or "medium",
+                    "status": req.status.value if req.status else "pending",
                     "wait_time_hours": wait_time_hours,
                     "created_at": req.created_at.isoformat() if req.created_at else None
                 })
