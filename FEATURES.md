@@ -243,6 +243,30 @@ open http://localhost:8000/docs
 
 ---
 
+---
+
+## 🆕 New Features (Hackathon)
+
+### Feature A: Manager Digest (`/api/analytics/manager-digest`)
+Real-time dashboard for leadership with team velocity, task counts, blockers, and risk alerts.
+
+### Feature B: Sprint Prediction (`/api/analytics/sprint-prediction`)
+Velocity-based timeline forecasting with risk identification and completion probability.
+
+### Feature C: Expertise Graph (`/api/expertise/skill-graph`, `/api/expertise/skill-recommendations`)
+Visualize team expertise, identify skill gaps, and recommend personalized skill development with mentors.
+
+### Feature D: Workload Heatmap (`/api/analytics/bottleneck-heatmap`)
+Visual analysis of blocked tasks, pending help requests, and overloaded team members.
+
+### Feature E: Incident Auto-Detection (`/api/incidents/*`)
+Keyword-based production incident classification from standups with auto-creation and tracking.
+
+### Feature F: Retrospective Generator (`/api/analytics/retrospective`)
+Auto-generates sprints from standups: what_went_well, what_slowed_us, metrics, action_items.
+
+---
+
 ## 📈 Next Steps (Future)
 
 - [ ] Real-time WebSocket updates for dashboard
