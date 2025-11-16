@@ -151,6 +151,150 @@ class Reminder(Base):
     is_sent = Column(Boolean, default=False)
 
 
+class GitHubCommit(Base):
+    __tablename__ = "github_commits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sha = Column(String, unique=True, nullable=False)
+    user_id = Column(String, ForeignKey("users.id"))
+    github_username = Column(String, nullable=False)
+
+    repo_name = Column(String, nullable=False)
+    message = Column(Text)
+    files_changed = Column(JSON)  # List of changed files
+    additions = Column(Integer, default=0)
+    deletions = Column(Integer, default=0)
+
+    commit_date = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GitHubPullRequest(Base):
+    __tablename__ = "github_pull_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pr_number = Column(Integer, nullable=False)
+    repo_name = Column(String, nullable=False)
+
+    user_id = Column(String, ForeignKey("users.id"))
+    github_username = Column(String, nullable=False)
+
+    title = Column(String, nullable=False)
+    state = Column(String)  # open, closed, merged
+    merged = Column(Boolean, default=False)
+
+    created_at_github = Column(DateTime)
+    merged_at = Column(DateTime)
+    closed_at = Column(DateTime)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GitHubReview(Base):
+    __tablename__ = "github_reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_id = Column(String, unique=True)
+    pr_number = Column(Integer, nullable=False)
+    repo_name = Column(String, nullable=False)
+
+    user_id = Column(String, ForeignKey("users.id"))
+    github_username = Column(String, nullable=False)
+
+    state = Column(String)  # APPROVED, CHANGES_REQUESTED, COMMENTED
+    submitted_at = Column(DateTime)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserExpertise(Base):
+    __tablename__ = "user_expertise"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    # Expertise domains
+    domain = Column(String, nullable=False)  # e.g., "python", "react", "docker"
+    score = Column(Float, default=0.0)  # 0-100
+
+    # Evidence
+    commit_count = Column(Integer, default=0)
+    pr_count = Column(Integer, default=0)
+    review_count = Column(Integer, default=0)
+    help_count = Column(Integer, default=0)  # Times helped others
+
+    # Metadata
+    last_activity = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CollaborationMetric(Base):
+    __tablename__ = "collaboration_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    # Collaboration scores
+    help_requests_received = Column(Integer, default=0)
+    help_requests_resolved = Column(Integer, default=0)
+    avg_resolution_time_minutes = Column(Float, default=0.0)
+
+    code_reviews_given = Column(Integer, default=0)
+    code_reviews_received = Column(Integer, default=0)
+
+    # Cross-team collaboration
+    teams_collaborated_with = Column(JSON)  # List of team names
+
+    # Time period
+    week_start = Column(String)  # YYYY-MM-DD format
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MeetingEvent(Base):
+    __tablename__ = "meeting_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, unique=True)  # Google Calendar event ID
+
+    title = Column(String, nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer)
+
+    attendees = Column(JSON)  # List of user IDs
+    organizer_id = Column(String, ForeignKey("users.id"))
+
+    was_necessary = Column(Boolean)  # AI determination
+    could_be_async = Column(Boolean)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class HelpInboxThread(Base):
+    __tablename__ = "help_inbox_threads"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    help_request_id = Column(Integer, ForeignKey("help_requests.id"), nullable=False)
+
+    # Slack thread info
+    expert_dm_channel_id = Column(String)  # Expert's Help Inbox DM channel
+    thread_ts = Column(String, unique=True)  # Slack thread timestamp
+
+    # Participants (sender is auto-added to thread only)
+    sender_id = Column(String, ForeignKey("users.id"), nullable=False)
+    expert_id = Column(String, ForeignKey("users.id"), nullable=False)
+    additional_experts = Column(JSON)  # For multi-expert threads
+
+    # Status
+    is_active = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime)
+
+
 # Database Service
 class DatabaseService:
     """Manages all structured data in PostgreSQL"""
@@ -597,3 +741,417 @@ class DatabaseService:
                         setattr(task, key, value)
 
                 await session.commit()
+
+    # ========== GITHUB INTEGRATION METHODS ==========
+
+    async def save_github_commit(self, commit_data: Dict) -> int:
+        """Save GitHub commit"""
+        async with self.async_session() as session:
+            # Check if commit already exists
+            result = await session.execute(
+                select(GitHubCommit).where(GitHubCommit.sha == commit_data['sha'])
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                return existing.id
+
+            commit = GitHubCommit(**commit_data)
+            session.add(commit)
+            await session.commit()
+            return commit.id
+
+    async def save_github_pr(self, pr_data: Dict) -> int:
+        """Save GitHub PR"""
+        async with self.async_session() as session:
+            # Check if PR already exists
+            result = await session.execute(
+                select(GitHubPullRequest).where(
+                    GitHubPullRequest.pr_number == pr_data['pr_number'],
+                    GitHubPullRequest.repo_name == pr_data['repo_name']
+                )
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                # Update existing PR
+                for key, value in pr_data.items():
+                    if hasattr(existing, key):
+                        setattr(existing, key, value)
+                existing.updated_at = datetime.utcnow()
+                await session.commit()
+                return existing.id
+
+            pr = GitHubPullRequest(**pr_data)
+            session.add(pr)
+            await session.commit()
+            return pr.id
+
+    async def save_github_review(self, review_data: Dict) -> int:
+        """Save GitHub review"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(GitHubReview).where(
+                    GitHubReview.review_id == review_data['review_id']
+                )
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                return existing.id
+
+            review = GitHubReview(**review_data)
+            session.add(review)
+            await session.commit()
+            return review.id
+
+    async def get_user_commits(self, user_id: str, days: int = 30) -> List[Dict]:
+        """Get user's recent commits"""
+        async with self.async_session() as session:
+            since = datetime.utcnow() - timedelta(days=days)
+            result = await session.execute(
+                select(GitHubCommit).where(
+                    GitHubCommit.user_id == user_id,
+                    GitHubCommit.commit_date >= since
+                ).order_by(GitHubCommit.commit_date.desc())
+            )
+            commits = result.scalars().all()
+
+            return [
+                {
+                    "sha": c.sha,
+                    "repo_name": c.repo_name,
+                    "message": c.message,
+                    "files_changed": c.files_changed,
+                    "additions": c.additions,
+                    "deletions": c.deletions,
+                    "commit_date": c.commit_date
+                }
+                for c in commits
+            ]
+
+    async def get_user_prs(self, user_id: str, days: int = 30) -> List[Dict]:
+        """Get user's recent PRs"""
+        async with self.async_session() as session:
+            since = datetime.utcnow() - timedelta(days=days)
+            result = await session.execute(
+                select(GitHubPullRequest).where(
+                    GitHubPullRequest.user_id == user_id,
+                    GitHubPullRequest.created_at_github >= since
+                ).order_by(GitHubPullRequest.created_at_github.desc())
+            )
+            prs = result.scalars().all()
+
+            return [
+                {
+                    "pr_number": pr.pr_number,
+                    "repo_name": pr.repo_name,
+                    "title": pr.title,
+                    "state": pr.state,
+                    "merged": pr.merged,
+                    "created_at": pr.created_at_github,
+                    "merged_at": pr.merged_at
+                }
+                for pr in prs
+            ]
+
+    async def get_user_reviews(self, user_id: str, days: int = 30) -> List[Dict]:
+        """Get user's recent code reviews"""
+        async with self.async_session() as session:
+            since = datetime.utcnow() - timedelta(days=days)
+            result = await session.execute(
+                select(GitHubReview).where(
+                    GitHubReview.user_id == user_id,
+                    GitHubReview.submitted_at >= since
+                ).order_by(GitHubReview.submitted_at.desc())
+            )
+            reviews = result.scalars().all()
+
+            return [
+                {
+                    "pr_number": r.pr_number,
+                    "repo_name": r.repo_name,
+                    "state": r.state,
+                    "submitted_at": r.submitted_at
+                }
+                for r in reviews
+            ]
+
+    # ========== EXPERTISE METHODS ==========
+
+    async def update_user_expertise(
+        self,
+        user_id: str,
+        domain: str,
+        score: float,
+        commit_count: int = 0,
+        pr_count: int = 0,
+        review_count: int = 0,
+        help_count: int = 0
+    ):
+        """Update or create user expertise in a domain"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserExpertise).where(
+                    UserExpertise.user_id == user_id,
+                    UserExpertise.domain == domain
+                )
+            )
+            expertise = result.scalar_one_or_none()
+
+            if expertise:
+                expertise.score = score
+                expertise.commit_count += commit_count
+                expertise.pr_count += pr_count
+                expertise.review_count += review_count
+                expertise.help_count += help_count
+                expertise.last_activity = datetime.utcnow()
+                expertise.updated_at = datetime.utcnow()
+            else:
+                expertise = UserExpertise(
+                    user_id=user_id,
+                    domain=domain,
+                    score=score,
+                    commit_count=commit_count,
+                    pr_count=pr_count,
+                    review_count=review_count,
+                    help_count=help_count,
+                    last_activity=datetime.utcnow()
+                )
+                session.add(expertise)
+
+            await session.commit()
+
+    async def get_user_expertise(self, user_id: str) -> List[Dict]:
+        """Get all expertise domains for a user"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserExpertise).where(
+                    UserExpertise.user_id == user_id
+                ).order_by(UserExpertise.score.desc())
+            )
+            expertise_list = result.scalars().all()
+
+            return [
+                {
+                    "domain": e.domain,
+                    "score": e.score,
+                    "commit_count": e.commit_count,
+                    "pr_count": e.pr_count,
+                    "review_count": e.review_count,
+                    "help_count": e.help_count,
+                    "last_activity": e.last_activity
+                }
+                for e in expertise_list
+            ]
+
+    async def find_expert(self, domain: str, limit: int = 5) -> List[Dict]:
+        """Find users with expertise in a domain"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserExpertise, User).join(
+                    User, UserExpertise.user_id == User.id
+                ).where(
+                    UserExpertise.domain.ilike(f"%{domain}%"),
+                    User.is_active == True
+                ).order_by(UserExpertise.score.desc()).limit(limit)
+            )
+            results = result.all()
+
+            return [
+                {
+                    "user_id": expertise.user_id,
+                    "user_name": user.name,
+                    "domain": expertise.domain,
+                    "score": expertise.score,
+                    "commit_count": expertise.commit_count,
+                    "pr_count": expertise.pr_count,
+                    "review_count": expertise.review_count,
+                    "help_count": expertise.help_count
+                }
+                for expertise, user in results
+            ]
+
+    # ========== COLLABORATION METRICS ==========
+
+    async def update_collaboration_metrics(self, user_id: str, week_start: str, **metrics):
+        """Update collaboration metrics for a user in a given week"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(CollaborationMetric).where(
+                    CollaborationMetric.user_id == user_id,
+                    CollaborationMetric.week_start == week_start
+                )
+            )
+            metric = result.scalar_one_or_none()
+
+            if metric:
+                for key, value in metrics.items():
+                    if hasattr(metric, key):
+                        setattr(metric, key, value)
+            else:
+                metric = CollaborationMetric(
+                    user_id=user_id,
+                    week_start=week_start,
+                    **metrics
+                )
+                session.add(metric)
+
+            await session.commit()
+
+    async def get_collaboration_metrics(self, user_id: str, weeks: int = 4) -> List[Dict]:
+        """Get collaboration metrics for a user"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(CollaborationMetric).where(
+                    CollaborationMetric.user_id == user_id
+                ).order_by(CollaborationMetric.week_start.desc()).limit(weeks)
+            )
+            metrics = result.scalars().all()
+
+            return [
+                {
+                    "week_start": m.week_start,
+                    "help_requests_received": m.help_requests_received,
+                    "help_requests_resolved": m.help_requests_resolved,
+                    "avg_resolution_time_minutes": m.avg_resolution_time_minutes,
+                    "code_reviews_given": m.code_reviews_given,
+                    "code_reviews_received": m.code_reviews_received,
+                    "teams_collaborated_with": m.teams_collaborated_with
+                }
+                for m in metrics
+            ]
+
+    # ========== HELP INBOX METHODS ==========
+
+    async def create_help_inbox_thread(
+        self,
+        help_request_id: int,
+        sender_id: str,
+        expert_id: str,
+        expert_dm_channel_id: str,
+        thread_ts: str,
+        additional_experts: Optional[List[str]] = None
+    ) -> int:
+        """Create a help inbox thread"""
+        async with self.async_session() as session:
+            thread = HelpInboxThread(
+                help_request_id=help_request_id,
+                sender_id=sender_id,
+                expert_id=expert_id,
+                expert_dm_channel_id=expert_dm_channel_id,
+                thread_ts=thread_ts,
+                additional_experts=additional_experts or []
+            )
+            session.add(thread)
+            await session.commit()
+            return thread.id
+
+    async def get_expert_inbox_threads(self, expert_id: str, active_only: bool = True) -> List[Dict]:
+        """Get all threads in an expert's help inbox"""
+        async with self.async_session() as session:
+            query = select(HelpInboxThread, HelpRequest).join(
+                HelpRequest, HelpInboxThread.help_request_id == HelpRequest.id
+            ).where(HelpInboxThread.expert_id == expert_id)
+
+            if active_only:
+                query = query.where(HelpInboxThread.is_active == True)
+
+            result = await session.execute(query.order_by(HelpInboxThread.created_at.desc()))
+            results = result.all()
+
+            return [
+                {
+                    "thread_id": thread.id,
+                    "thread_ts": thread.thread_ts,
+                    "sender_id": thread.sender_id,
+                    "help_request_id": thread.help_request_id,
+                    "topic": help_req.topic,
+                    "context": help_req.context,
+                    "status": help_req.status.value,
+                    "created_at": thread.created_at,
+                    "is_active": thread.is_active
+                }
+                for thread, help_req in results
+            ]
+
+    async def resolve_help_inbox_thread(self, thread_id: int, resolution_notes: str = ""):
+        """Mark a help inbox thread as resolved"""
+        async with self.async_session() as session:
+            # Get thread
+            result = await session.execute(
+                select(HelpInboxThread).where(HelpInboxThread.id == thread_id)
+            )
+            thread = result.scalar_one_or_none()
+
+            if thread:
+                thread.is_active = False
+                thread.resolved_at = datetime.utcnow()
+
+                # Update help request status
+                help_result = await session.execute(
+                    select(HelpRequest).where(HelpRequest.id == thread.help_request_id)
+                )
+                help_req = help_result.scalar_one_or_none()
+
+                if help_req:
+                    help_req.status = HelpRequestStatus.RESOLVED
+                    help_req.resolved_at = datetime.utcnow()
+                    help_req.resolution_notes = resolution_notes
+
+                await session.commit()
+
+    # ========== MEETING METHODS ==========
+
+    async def save_meeting_event(self, event_data: Dict) -> int:
+        """Save a meeting event from calendar"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(MeetingEvent).where(
+                    MeetingEvent.event_id == event_data['event_id']
+                )
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                for key, value in event_data.items():
+                    if hasattr(existing, key):
+                        setattr(existing, key, value)
+                await session.commit()
+                return existing.id
+
+            meeting = MeetingEvent(**event_data)
+            session.add(meeting)
+            await session.commit()
+            return meeting.id
+
+    async def get_user_meetings(self, user_id: str, days: int = 30) -> List[Dict]:
+        """Get user's meeting history"""
+        async with self.async_session() as session:
+            since = datetime.utcnow() - timedelta(days=days)
+            result = await session.execute(
+                select(MeetingEvent).where(
+                    MeetingEvent.start_time >= since
+                ).order_by(MeetingEvent.start_time.desc())
+            )
+            all_meetings = result.scalars().all()
+
+            # Filter meetings where user is an attendee
+            user_meetings = [
+                m for m in all_meetings
+                if m.attendees and user_id in m.attendees
+            ]
+
+            return [
+                {
+                    "event_id": m.event_id,
+                    "title": m.title,
+                    "start_time": m.start_time,
+                    "end_time": m.end_time,
+                    "duration_minutes": m.duration_minutes,
+                    "attendees": m.attendees,
+                    "was_necessary": m.was_necessary,
+                    "could_be_async": m.could_be_async
+                }
+                for m in user_meetings
+            ]

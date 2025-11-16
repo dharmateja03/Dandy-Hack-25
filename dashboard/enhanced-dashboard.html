@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Enhanced Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            color: #667eea;
+        }
+
+        .tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .stat {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+
+        .stat.success { color: #10b981; }
+        .stat.warning { color: #f59e0b; }
+        .stat.danger { color: #ef4444; }
+        .stat.info { color: #3b82f6; }
+
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .heatmap {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .heatmap-cell {
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            transition: transform 0.3s;
+        }
+
+        .heatmap-cell:hover {
+            transform: scale(1.05);
+        }
+
+        .heatmap-cell.low { background: #10b981; }
+        .heatmap-cell.medium { background: #f59e0b; }
+        .heatmap-cell.high { background: #ef4444; }
+
+        .expertise-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .expertise-card {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .expertise-bar {
+            background: #e5e7eb;
+            height: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .expertise-bar-fill {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            transition: width 0.5s;
+        }
+
+        .deployment-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .deployment-item {
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid #10b981;
+        }
+
+        .deployment-item small {
+            color: #6b7280;
+        }
+
+        .sprint-prediction {
+            text-align: center;
+            padding: 30px;
+        }
+
+        .probability-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            margin: 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .risk-list {
+            text-align: left;
+            margin: 20px 0;
+        }
+
+        .risk-item {
+            padding: 10px;
+            background: #fef2f2;
+            border-left: 3px solid #ef4444;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 MCP Enhanced Dashboard</h1>
+            <p>Real-time team intelligence powered by AI</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('overview')">Overview</button>
+            <button class="tab" onclick="switchTab('github')">GitHub Activity</button>
+            <button class="tab" onclick="switchTab('expertise')">Team Expertise</button>
+            <button class="tab" onclick="switchTab('sprint')">Sprint Prediction</button>
+            <button class="tab" onclick="switchTab('bottleneck')">Bottleneck Heatmap</button>
+            <button class="tab" onclick="switchTab('collaboration')">Collaboration</button>
+            <button class="tab" onclick="switchTab('meetings')">Meeting Analytics</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <div class="grid">
+                <div class="card">
+                    <h3>📊 Team Velocity</h3>
+                    <div class="stat success" id="velocityStat">0</div>
+                    <p>tasks/week</p>
+                </div>
+                <div class="card">
+                    <h3>🚧 Active Blockers</h3>
+                    <div class="stat danger" id="blockersStat">0</div>
+                    <p>blockers</p>
+                </div>
+                <div class="card">
+                    <h3>🤝 Help Requests</h3>
+                    <div class="stat warning" id="helpStat">0</div>
+                    <p>pending</p>
+                </div>
+                <div class="card">
+                    <h3>⏱️ Time Saved</h3>
+                    <div class="stat info" id="timeSavedStat">0</div>
+                    <p>hours this month</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Weekly Velocity Trend</h3>
+                <canvas id="velocityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- GitHub Activity Tab -->
+        <div id="github" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h3>💻 Recent Commits</h3>
+                    <div class="stat info" id="commitsStat">0</div>
+                    <p>last 7 days</p>
+                </div>
+                <div class="card">
+                    <h3>🔀 Pull Requests</h3>
+                    <div class="stat success" id="prsStat">0</div>
+                    <p>merged</p>
+                </div>
+                <div class="card">
+                    <h3>👀 Code Reviews</h3>
+                    <div class="stat warning" id="reviewsStat">0</div>
+                    <p>completed</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>🚀 Recent Deployments</h3>
+                <button class="btn" onclick="loadGitHubData()">Sync GitHub Data</button>
+                <div class="deployment-list" id="deploymentList">
+                    <p>Loading deployments...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Team Expertise Tab -->
+        <div id="expertise" class="tab-content">
+            <div class="chart-container">
+                <h3>🎯 Team Expertise Overview</h3>
+                <button class="btn" onclick="loadExpertise()">Refresh Expertise</button>
+                <div class="expertise-grid" id="expertiseGrid">
+                    <p>Loading expertise data...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sprint Prediction Tab -->
+        <div id="sprint" class="tab-content">
+            <div class="chart-container sprint-prediction">
+                <h3>📈 Sprint Completion Prediction</h3>
+                <div class="probability-circle" id="probabilityCircle">?</div>
+                <h2 id="predictionStatus">Calculating...</h2>
+                <p id="predictionRecommendation"></p>
+                <div class="risk-list" id="riskList"></div>
+                <button class="btn" onclick="loadSprintPrediction()">Refresh Prediction</button>
+            </div>
+        </div>
+
+        <!-- Bottleneck Heatmap Tab -->
+        <div id="bottleneck" class="tab-content">
+            <div class="chart-container">
+                <h3>🔥 Team Bottleneck Heatmap</h3>
+                <button class="btn" onclick="loadBottleneckHeatmap()">Refresh Heatmap</button>
+                <div class="heatmap" id="bottleneckHeatmap">
+                    <p>Loading heatmap...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collaboration Tab -->
+        <div id="collaboration" class="tab-content">
+            <div class="chart-container">
+                <h3>🤝 Team Collaboration Scores</h3>
+                <canvas id="collaborationChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Meeting Analytics Tab -->
+        <div id="meetings" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h3>📅 Total Meetings</h3>
+                    <div class="stat info" id="totalMeetingsStat">0</div>
+                    <p>last 30 days</p>
+                </div>
+                <div class="card">
+                    <h3>⏱️ Time in Meetings</h3>
+                    <div class="stat warning" id="meetingTimeStat">0</div>
+                    <p>hours</p>
+                </div>
+                <div class="card">
+                    <h3>✂️ Unnecessary Meetings</h3>
+                    <div class="stat danger" id="unnecessaryMeetingsStat">0</div>
+                    <p>could be async</p>
+                </div>
+                <div class="card">
+                    <h3>💚 Time Saved</h3>
+                    <div class="stat success" id="meetingTimeSavedStat">0</div>
+                    <p>hours</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="meetingChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Deactivate all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+
+            // Activate selected tab
+            event.target.classList.add('active');
+
+            // Load data for specific tabs
+            if (tabName === 'github') loadGitHubData();
+            if (tabName === 'expertise') loadExpertise();
+            if (tabName === 'sprint') loadSprintPrediction();
+            if (tabName === 'bottleneck') loadBottleneckHeatmap();
+            if (tabName === 'collaboration') loadCollaboration();
+            if (tabName === 'meetings') loadMeetingAnalytics();
+        }
+
+        async function loadOverviewData() {
+            try {
+                // Load velocity
+                const velocity = await fetch(`${API_BASE}/analytics/velocity?weeks=4`).then(r => r.json());
+                document.getElementById('velocityStat').textContent = velocity.average_velocity.toFixed(1);
+
+                // Load active blockers
+                const blockers = await fetch(`${API_BASE}/analytics/blockers`).then(r => r.json());
+                document.getElementById('blockersStat').textContent = blockers.blockers.length;
+
+                // Load time saved
+                const timeSaved = await fetch(`${API_BASE}/analytics/meeting-time-saved`).then(r => r.json());
+                document.getElementById('timeSavedStat').textContent = timeSaved.time_saved_hours.toFixed(1);
+
+                // Create velocity chart
+                const ctx = document.getElementById('velocityChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: velocity.weeks.map(w => w.week),
+                        datasets: [{
+                            label: 'Tasks Completed',
+                            data: velocity.weeks.map(w => w.tasks_completed),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading overview:', error);
+            }
+        }
+
+        async function loadGitHubData() {
+            try {
+                const deployments = await fetch(`${API_BASE}/github/deployments?days=7`).then(r => r.json());
+
+                const deploymentList = document.getElementById('deploymentList');
+                if (deployments.deployments && deployments.deployments.length > 0) {
+                    deploymentList.innerHTML = deployments.deployments.map(d => `
+                        <div class="deployment-item">
+                            <strong>${d.user}</strong> deployed <strong>${d.title}</strong>
+                            <br>
+                            <small>${new Date(d.merged_at).toLocaleString()}</small>
+                        </div>
+                    `).join('');
+                } else {
+                    deploymentList.innerHTML = '<p>No recent deployments or GitHub not configured</p>';
+                }
+            } catch (error) {
+                console.error('Error loading GitHub data:', error);
+                document.getElementById('deploymentList').innerHTML = '<p>GitHub integration not available</p>';
+            }
+        }
+
+        async function loadExpertise() {
+            try {
+                const expertise = await fetch(`${API_BASE}/expertise/team/overview`).then(r => r.json());
+
+                const grid = document.getElementById('expertiseGrid');
+                grid.innerHTML = expertise.team_expertise.map(user => {
+                    return `
+                        <div class="expertise-card">
+                            <h4>${user.user_name}</h4>
+                            ${user.top_expertise.map(exp => `
+                                <div>
+                                    <strong>${exp.domain}</strong>
+                                    <div class="expertise-bar">
+                                        <div class="expertise-bar-fill" style="width: ${exp.score}%"></div>
+                                    </div>
+                                    <small>${exp.score.toFixed(1)}/100</small>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading expertise:', error);
+                document.getElementById('expertiseGrid').innerHTML = '<p>Unable to load expertise data</p>';
+            }
+        }
+
+        async function loadSprintPrediction() {
+            try {
+                const prediction = await fetch(`${API_BASE}/analytics/sprint-prediction`).then(r => r.json());
+
+                const probability = prediction.completion_probability;
+                const circle = document.getElementById('probabilityCircle');
+                circle.textContent = `${probability.toFixed(0)}%`;
+
+                if (probability >= 80) {
+                    circle.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                } else if (probability >= 50) {
+                    circle.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                } else {
+                    circle.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                }
+
+                document.getElementById('predictionStatus').textContent =
+                    prediction.on_track ? '✅ Sprint On Track' : '⚠️ Sprint At Risk';
+                document.getElementById('predictionRecommendation').textContent = prediction.recommendation;
+
+                const riskList = document.getElementById('riskList');
+                if (prediction.risks && prediction.risks.length > 0) {
+                    riskList.innerHTML = '<h4>⚠️ Risks:</h4>' +
+                        prediction.risks.map(risk => `<div class="risk-item">${risk}</div>`).join('');
+                } else {
+                    riskList.innerHTML = '<p style="color: #10b981;">No risks identified 🎉</p>';
+                }
+            } catch (error) {
+                console.error('Error loading sprint prediction:', error);
+                document.getElementById('probabilityCircle').textContent = 'N/A';
+            }
+        }
+
+        async function loadBottleneckHeatmap() {
+            try {
+                const heatmap = await fetch(`${API_BASE}/analytics/bottleneck-heatmap`).then(r => r.json());
+
+                const grid = document.getElementById('bottleneckHeatmap');
+                if (heatmap.heatmap && heatmap.heatmap.length > 0) {
+                    grid.innerHTML = heatmap.heatmap.map(user => {
+                        let severity = 'low';
+                        if (user.bottleneck_score >= 5) severity = 'high';
+                        else if (user.bottleneck_score >= 3) severity = 'medium';
+
+                        return `
+                            <div class="heatmap-cell ${severity}">
+                                <h4>${user.user_name}</h4>
+                                <div style="font-size: 24px; font-weight: bold; margin: 10px 0;">
+                                    ${user.bottleneck_score}
+                                </div>
+                                <small>Blocked: ${user.blocked} | Pending: ${user.pending_help} | Stalled: ${user.stalled}</small>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    grid.innerHTML = '<p>No bottlenecks detected! 🎉</p>';
+                }
+            } catch (error) {
+                console.error('Error loading bottleneck heatmap:', error);
+                document.getElementById('bottleneckHeatmap').innerHTML = '<p>Unable to load heatmap</p>';
+            }
+        }
+
+        async function loadCollaboration() {
+            try {
+                const collab = await fetch(`${API_BASE}/analytics/collaboration-score`).then(r => r.json());
+
+                const ctx = document.getElementById('collaborationChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: collab.collaboration_scores.map(c => c.user_name),
+                        datasets: [{
+                            label: 'Collaboration Score',
+                            data: collab.collaboration_scores.map(c => c.score),
+                            backgroundColor: 'rgba(102, 126, 234, 0.8)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading collaboration:', error);
+            }
+        }
+
+        async function loadMeetingAnalytics() {
+            try {
+                const meetings = await fetch(`${API_BASE}/analytics/meeting-time-saved`).then(r => r.json());
+
+                document.getElementById('totalMeetingsStat').textContent = meetings.total_meetings || 0;
+                document.getElementById('meetingTimeStat').textContent = meetings.total_meeting_time_hours?.toFixed(1) || 0;
+                document.getElementById('unnecessaryMeetingsStat').textContent = meetings.unnecessary_meetings || 0;
+                document.getElementById('meetingTimeSavedStat').textContent = meetings.time_saved_hours?.toFixed(1) || 0;
+
+                const ctx = document.getElementById('meetingChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Necessary Meetings', 'Could Be Async'],
+                        datasets: [{
+                            data: [
+                                meetings.total_meetings - meetings.unnecessary_meetings,
+                                meetings.unnecessary_meetings
+                            ],
+                            backgroundColor: ['#10b981', '#ef4444']
+                        }]
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading meeting analytics:', error);
+            }
+        }
+
+        // Load overview data on page load
+        loadOverviewData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadOverviewData, 30000);
+    </script>
+</body>
+</html>

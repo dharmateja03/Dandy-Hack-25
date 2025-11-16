@@ -35,12 +35,28 @@ class Settings(BaseSettings):
     JIRA_EMAIL: Optional[str] = None
     JIRA_API_TOKEN: Optional[str] = None
 
+    # GitHub Configuration
+    GITHUB_TOKEN: Optional[str] = None
+    GITHUB_ORG: Optional[str] = None
+    GITHUB_REPOS: Optional[str] = None  # Comma-separated list
+
+    # Linear Configuration
+    LINEAR_API_KEY: Optional[str] = None
+    LINEAR_TEAM_ID: Optional[str] = None
+
+    # Google Calendar Configuration
+    GOOGLE_CALENDAR_CREDENTIALS: Optional[str] = None
+    GOOGLE_CALENDAR_TOKEN: Optional[str] = None
+
     # Scheduling
     STANDUP_TIME: str = "09:00"  # 9 AM daily
     REMINDER_INTERVAL_HOURS: int = 6
 
     # Feature Flags
     ENABLE_JIRA_SYNC: bool = False
+    ENABLE_GITHUB_SYNC: bool = False
+    ENABLE_LINEAR_SYNC: bool = False
+    ENABLE_CALENDAR_SYNC: bool = False
     ENABLE_VOICE: bool = False
 
     class Config:
