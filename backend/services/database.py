@@ -538,10 +538,8 @@ class DatabaseService:
         async with self.async_session() as session:
             since = datetime.utcnow() - timedelta(days=days)
 
-            # Join Standup with User to get user names
-            query = select(Standup, User).join(
-                User, Standup.user_id == User.id
-            ).where(Standup.timestamp >= since)
+            # Get standups
+            query = select(Standup).where(Standup.timestamp >= since)
 
             if user_id:
                 query = query.where(Standup.user_id == user_id)
@@ -549,19 +547,37 @@ class DatabaseService:
             query = query.order_by(Standup.timestamp.desc())
 
             result = await session.execute(query)
-            standup_user_pairs = result.all()
+            standups_list = result.scalars().all()
 
-            return [
-                {
+            # For each standup, try to get user name, fallback to user_id if not found
+            standups_with_names = []
+            for s in standups_list:
+                # Try to find user by ID first
+                user_result = await session.execute(
+                    select(User).where(User.id == s.user_id)
+                )
+                user = user_result.scalar()
+
+                # If not found by ID, try by slack_user_id
+                if not user:
+                    user_result = await session.execute(
+                        select(User).where(User.slack_user_id == s.user_id)
+                    )
+                    user = user_result.scalar()
+
+                # Use actual user name if found, otherwise use user_id as fallback
+                user_name = user.name if user else s.user_id
+
+                standups_with_names.append({
                     "user_id": s.user_id,
-                    "user_name": u.name,  # Get actual user name from User table
+                    "user_name": user_name,
                     "message": s.message,
                     "date": s.date,
                     "timestamp": s.timestamp,
                     "parsed_data": s.parsed_data
-                }
-                for s, u in standup_user_pairs
-            ]
+                })
+
+            return standups_with_names
 
     # ========== SCHEDULER SUPPORT METHODS ==========
 
