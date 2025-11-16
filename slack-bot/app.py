@@ -13,6 +13,7 @@ This bot is how teams interact with MCP:
 import os
 import logging
 import threading
+import re
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 import httpx
@@ -377,6 +378,37 @@ async def handle_message(event, client, say):
             logger.error(f"Error processing query: {e}")
 
 
+def determine_help_priority(topic: str, reason: str = "", blockers_mentioned: bool = False) -> str:
+    """
+    Determine help request priority based on keywords and context
+
+    Returns: 'high', 'medium', or 'low'
+    """
+    combined_text = (topic + " " + reason).lower()
+
+    # High priority keywords
+    high_priority_keywords = [
+        'urgent', 'critical', 'asap', 'blocking', 'blocked', 'emergency',
+        'crash', 'error', 'exception', 'fail', 'production', 'urgent help needed'
+    ]
+
+    # Medium priority keywords
+    medium_priority_keywords = [
+        'help', 'need', 'question', 'stuck', 'unclear', 'confused', 'issue'
+    ]
+
+    # Check for high priority keywords
+    if blockers_mentioned or any(keyword in combined_text for keyword in high_priority_keywords):
+        return 'high'
+
+    # Check for medium priority keywords
+    if any(keyword in combined_text for keyword in medium_priority_keywords):
+        return 'medium'
+
+    # Default to low priority
+    return 'low'
+
+
 def process_standup_response(user_id: str, message: str, client):
     """
     Process standup response through MCP with enhanced feedback (synchronous version for threading)
@@ -494,6 +526,10 @@ def process_standup_response(user_id: str, message: str, client):
                                 group_dm_channel_id = group_dm_response.get("channel", {}).get("id")
 
                                 if group_dm_channel_id:
+                                    # Determine priority based on topic and reason
+                                    priority = determine_help_priority(topic, reason, blockers_mentioned=False)
+                                    priority_emoji = "🔴" if priority == "high" else "🟡" if priority == "medium" else "🟢"
+
                                     # Send help request message to group DM (not a private thread)
                                     message_response = client.chat_postMessage(
                                         channel=group_dm_channel_id,
@@ -502,7 +538,7 @@ def process_standup_response(user_id: str, message: str, client):
                                                 "type": "header",
                                                 "text": {
                                                     "type": "plain_text",
-                                                    "text": f"🆘 Help Request"
+                                                    "text": f"🆘 Help Request {priority_emoji} [{priority.upper()}]"
                                                 }
                                             },
                                             {
@@ -511,6 +547,7 @@ def process_standup_response(user_id: str, message: str, client):
                                                     "type": "mrkdwn",
                                                     "text": f"<@{user_id}> needs help from <@{slack_user_id}>\n\n" +
                                                            f"*Topic:* {topic}\n" +
+                                                           f"*Priority:* {priority_emoji} {priority.upper()}\n" +
                                                            f"*Reason:* {reason}\n\n" +
                                                            f"Both of you can see this conversation and respond.\n" +
                                                            f"The conversation will be tracked for team learning.\n\n" +
@@ -564,6 +601,10 @@ def process_standup_response(user_id: str, message: str, client):
                                 dm_channel_id = dm_response.get("channel", {}).get("id")
 
                                 if dm_channel_id:
+                                    # Determine priority for fallback message too
+                                    priority = determine_help_priority(topic, reason, blockers_mentioned=False)
+                                    priority_emoji = "🔴" if priority == "high" else "🟡" if priority == "medium" else "🟢"
+
                                     message_response = client.chat_postMessage(
                                         channel=dm_channel_id,
                                         blocks=[
@@ -571,7 +612,7 @@ def process_standup_response(user_id: str, message: str, client):
                                                 "type": "header",
                                                 "text": {
                                                     "type": "plain_text",
-                                                    "text": f"🆘 Help Request from <@{user_id}>"
+                                                    "text": f"🆘 Help Request {priority_emoji} [{priority.upper()}] from <@{user_id}>"
                                                 }
                                             },
                                             {
@@ -579,6 +620,7 @@ def process_standup_response(user_id: str, message: str, client):
                                                 "text": {
                                                     "type": "mrkdwn",
                                                     "text": f"*Topic:* {topic}\n" +
+                                                           f"*Priority:* {priority_emoji} {priority.upper()}\n" +
                                                            f"*Reason:* {reason}\n\n" +
                                                            f"Please reply to help. " +
                                                            f"The conversation will be tracked for team learning.\n\n" +
@@ -587,7 +629,7 @@ def process_standup_response(user_id: str, message: str, client):
                                             }
                                         ]
                                     )
-                                    logger.info(f"📧 Sent individual DM to helper {helper_name} (Request {help_request_id})")
+                                    logger.info(f"📧 Sent individual DM to helper {helper_name} (Request {help_request_id}, Priority: {priority})")
 
                         except Exception as dm_err:
                             logger.error(f"❌ Failed to notify helper {helper_name}: {str(dm_err)}")
@@ -953,6 +995,84 @@ def handle_my_tasks_command(ack, command, client):
             channel=user_id,
             text="⚠️ Couldn't fetch your tasks. Please try again."
         )
+
+
+# ========== HELP REQUEST BUTTON ACTIONS ==========
+
+@app.action(re.compile(r"help_resolved_\d+"))
+def handle_help_provided_button(ack, body, client):
+    """
+    Handle "Help Provided" button click
+    Updates help request status to RESOLVED (not deleted!)
+    """
+    ack()
+
+    try:
+        # Extract help request ID from action_id
+        action_id = body["actions"][0]["action_id"]
+        help_request_id = action_id.replace("help_resolved_", "")
+
+        user_id = body["user"]["id"]
+        user_name = body["user"].get("username", user_id)
+
+        logger.info(f"User {user_name} marked help request {help_request_id} as resolved")
+
+        # Update help request status in backend
+        try:
+            sync_http_client.post(
+                f"/api/help/{help_request_id}/resolve",
+                params={"resolution_notes": f"Resolved by {user_name}"}
+            )
+            logger.info(f"✅ Help request {help_request_id} marked as resolved")
+        except Exception as e:
+            logger.error(f"⚠️ Could not update help request status: {e}")
+
+        # Send confirmation message
+        client.chat_postMessage(
+            channel=body["channel"]["id"],
+            text=f"✅ <@{user_id}> marked this help request as resolved!\n\nThank you for helping the team! 🎉"
+        )
+
+    except Exception as e:
+        logger.error(f"Error handling help provided button: {e}", exc_info=True)
+
+
+@app.action(re.compile(r"help_more_info_\d+"))
+def handle_help_more_info_button(ack, body, client):
+    """
+    Handle "Need More Info" button click
+    Accepts the help request and keeps it in progress
+    """
+    ack()
+
+    try:
+        # Extract help request ID from action_id
+        action_id = body["actions"][0]["action_id"]
+        help_request_id = action_id.replace("help_more_info_", "")
+
+        user_id = body["user"]["id"]
+        user_name = body["user"].get("username", user_id)
+
+        logger.info(f"User {user_name} requested more info for help request {help_request_id}")
+
+        # Update help request status to ACCEPTED
+        try:
+            sync_http_client.post(
+                f"/api/help/{help_request_id}/accept",
+                params={}
+            )
+            logger.info(f"✅ Help request {help_request_id} marked as accepted")
+        except Exception as e:
+            logger.error(f"⚠️ Could not update help request status: {e}")
+
+        # Send message asking requester for more info
+        client.chat_postMessage(
+            channel=body["channel"]["id"],
+            text=f"💬 <@{user_id}> needs more information to help you!\n\nPlease reply with additional details about your issue."
+        )
+
+    except Exception as e:
+        logger.error(f"Error handling need more info button: {e}", exc_info=True)
 
 
 # ========== APP MENTION ==========
