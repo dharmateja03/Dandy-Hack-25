@@ -31,19 +31,31 @@ async def get_all_tasks(request: Request = None):
 
 
 @router.get("/user/{user_id}")
-async def get_user_tasks(user_id: str, status: Optional[str] = None, request: Request = None):
+async def get_user_tasks(
+    user_id: str,
+    status: Optional[str] = None,
+    filter: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    request: Request = None
+):
     """
-    Get tasks for a user
+    Get tasks for a user with optional filtering and sorting
+
+    Query Parameters:
+    - status: Filter by status (not_started, in_progress, blocked, completed)
+    - filter: Filter type (all, high, medium, low, in_progress, blocked)
+    - sort_by: Sort field (priority, due_date, created_at)
 
     Used by Slack bot to:
     - Display user's tasks in standup modal
     - Show task list in DMs
+    - Support /my-tasks command with priority sorting
     """
     try:
         mcp = request.app.state.mcp
         db = mcp.database
 
-        # Convert status string to enum if provided
+        # Convert status string to enum if provided (legacy parameter)
         task_status = None
         if status:
             try:
@@ -51,7 +63,32 @@ async def get_user_tasks(user_id: str, status: Optional[str] = None, request: Re
             except KeyError:
                 raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
 
+        # Get user tasks
         tasks = await db.get_user_tasks(user_id, status=task_status)
+
+        # Apply filter if specified
+        if filter and filter.lower() != "all":
+            filter_type = filter.lower()
+            if filter_type in ["high", "medium", "low"]:
+                # Filter by priority
+                tasks = [t for t in tasks if t.get("priority", "").lower() == filter_type]
+            elif filter_type in ["in_progress", "blocked", "not_started", "completed"]:
+                # Filter by status
+                tasks = [t for t in tasks if t.get("status", "").lower() == filter_type]
+
+        # Sort if specified
+        if sort_by:
+            sort_field = sort_by.lower()
+            if sort_field == "priority":
+                # Sort by priority: HIGH -> MEDIUM -> LOW
+                priority_order = {"high": 0, "medium": 1, "low": 2}
+                tasks.sort(key=lambda t: (priority_order.get(t.get("priority", "medium").lower(), 99), t.get("created_at", "")))
+            elif sort_field == "due_date":
+                # Sort by due date (soonest first)
+                tasks.sort(key=lambda t: t.get("due_date", "9999-12-31"))
+            elif sort_field == "created_at":
+                # Sort by creation date (newest first)
+                tasks.sort(key=lambda t: t.get("created_at", ""), reverse=True)
 
         return {"tasks": tasks}
 

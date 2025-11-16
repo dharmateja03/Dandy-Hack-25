@@ -260,3 +260,135 @@ async def resolve_help_request(
     except Exception as e:
         logger.error(f"Error resolving help request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/user/{user_id}/received-today")
+async def get_received_help_requests_today(user_id: str, request: Request = None):
+    """
+    Get help requests that this user received today, sorted by priority
+
+    Used by /my-help-requests Slack command
+    """
+    try:
+        from datetime import datetime, timedelta
+        mcp = request.app.state.mcp
+        db = mcp.database
+
+        # Get help requests received by this user today
+        async with db.async_session() as session:
+            from services.database import HelpRequest, User
+            from sqlalchemy import select, and_
+
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+            result = await session.execute(
+                select(HelpRequest, User).join(
+                    User, HelpRequest.from_user_id == User.id
+                ).where(
+                    and_(
+                        HelpRequest.to_user_id == user_id,
+                        HelpRequest.created_at >= today_start
+                    )
+                ).order_by(
+                    # Sort by urgency/priority (high first)
+                    HelpRequest.urgency.desc(),
+                    HelpRequest.created_at.desc()
+                )
+            )
+            request_user_pairs = result.all()
+
+            help_requests = []
+            for req, requester_user in request_user_pairs:
+                help_requests.append({
+                    "id": req.id,
+                    "topic": req.topic,
+                    "from_user_id": req.from_user_id,
+                    "from_user_name": requester_user.name,
+                    "priority": (req.urgency or "medium").upper(),
+                    "status": (req.status.value if req.status else "pending").lower(),
+                    "created_at": req.created_at.isoformat() if req.created_at else None,
+                    "context": req.context
+                })
+
+            return {
+                "status": "success",
+                "help_requests": help_requests,
+                "count": len(help_requests)
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting received help requests for {user_id}: {e}")
+        return {
+            "status": "success",
+            "help_requests": [],
+            "count": 0
+        }
+
+
+@router.get("/user/{user_id}/helping-with-today")
+async def get_helping_with_today(user_id: str, request: Request = None):
+    """
+    Get help requests this user is helping with today (assigned_to = user_id)
+
+    Used by /my-helping Slack command
+    """
+    try:
+        from datetime import datetime, timedelta
+        mcp = request.app.state.mcp
+        db = mcp.database
+
+        # Get help requests assigned to this user today
+        async with db.async_session() as session:
+            from services.database import HelpRequest, User
+            from sqlalchemy import select, and_
+
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+            result = await session.execute(
+                select(HelpRequest, User).join(
+                    User, HelpRequest.from_user_id == User.id
+                ).where(
+                    and_(
+                        HelpRequest.to_user_id == user_id,
+                        HelpRequest.created_at >= today_start
+                    )
+                ).order_by(
+                    HelpRequest.created_at.desc()
+                )
+            )
+            request_user_pairs = result.all()
+
+            helping_items = []
+            for req, requester_user in request_user_pairs:
+                # Calculate duration if accepted/resolved
+                duration_minutes = 0
+                if req.accepted_at and req.resolved_at:
+                    duration = req.resolved_at - req.accepted_at
+                    duration_minutes = int(duration.total_seconds() / 60)
+                elif req.accepted_at:
+                    duration = datetime.utcnow() - req.accepted_at
+                    duration_minutes = int(duration.total_seconds() / 60)
+
+                helping_items.append({
+                    "id": req.id,
+                    "topic": req.topic,
+                    "to_user_id": req.from_user_id,
+                    "to_user_name": requester_user.name,
+                    "status": (req.status.value if req.status else "pending").lower(),
+                    "duration_minutes": duration_minutes,
+                    "created_at": req.created_at.isoformat() if req.created_at else None
+                })
+
+            return {
+                "status": "success",
+                "helping_items": helping_items,
+                "count": len(helping_items)
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting helping-with for {user_id}: {e}")
+        return {
+            "status": "success",
+            "helping_items": [],
+            "count": 0
+        }
