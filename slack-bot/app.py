@@ -409,6 +409,37 @@ def determine_help_priority(topic: str, reason: str = "", blockers_mentioned: bo
     return 'low'
 
 
+def detect_incidents(message: str, user_id: str, user_name: str) -> list:
+    """
+    Detect incidents from standup message using keyword analysis
+
+    Returns: list of detected incidents with details
+    """
+    message_lower = message.lower()
+
+    # Incident keywords
+    incident_keywords = {
+        'critical': ['down', 'crash', 'broken', 'failed', 'failure', '503', '500', 'outage'],
+        'high': ['error', 'exception', 'emergency', 'urgent', 'critical', 'production', 'deploy failed'],
+        'medium': ['issue', 'bug', 'problem', 'not working', 'stopped', 'slow']
+    }
+
+    detected_incidents = []
+
+    for severity, keywords in incident_keywords.items():
+        if any(kw in message_lower for kw in keywords):
+            detected_incidents.append({
+                'severity': severity,
+                'reported_by': user_id,
+                'reported_by_name': user_name,
+                'description': message[:200],  # First 200 chars
+                'detected_keywords': [kw for kw in keywords if kw in message_lower]
+            })
+            break  # Only detect one incident per message
+
+    return detected_incidents
+
+
 def process_standup_response(user_id: str, message: str, client):
     """
     Process standup response through MCP with enhanced feedback (synchronous version for threading)
@@ -427,6 +458,34 @@ def process_standup_response(user_id: str, message: str, client):
         # Check if request was successful
         response.raise_for_status()
         result = response.json()
+
+        # Get user name for incident reporting
+        try:
+            user_info = sync_http_client.get(f"/api/users/{user_id}")
+            user_name = user_info.json().get('name', user_id) if user_info.status_code == 200 else user_id
+        except:
+            user_name = user_id
+
+        # Detect incidents from standup message (FEATURE E)
+        detected_incidents = detect_incidents(message, user_id, user_name)
+        if detected_incidents:
+            logger.warning(f"🚨 INCIDENT DETECTED in standup from {user_name}!")
+            for incident in detected_incidents:
+                try:
+                    incident_response = sync_http_client.post(
+                        "/api/incidents/create",
+                        json={
+                            "severity": incident['severity'],
+                            "reported_by": user_id,
+                            "description": incident['description'],
+                            "keywords": incident['detected_keywords']
+                        }
+                    )
+                    incident_data = incident_response.json() if incident_response.status_code == 200 else {}
+                    incident_id = incident_data.get('id', 'unknown')
+                    logger.info(f"✅ Incident created: {incident_id} (Severity: {incident['severity']})")
+                except Exception as e:
+                    logger.error(f"⚠️ Failed to create incident: {e}")
 
         # Get task updates from parsed_data
         task_updates = result.get('parsed_data', {}).get('task_updates', [])
