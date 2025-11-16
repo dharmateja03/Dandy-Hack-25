@@ -155,3 +155,164 @@ async def get_user_collaboration_metrics(user_id: str, weeks: int = 4):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/skill-graph")
+async def get_skill_graph():
+    """Get skill relationship graph learned from GitHub & help patterns (FEATURE C)"""
+    from backend.main import db, github_service
+
+    try:
+        # Get users with expertise
+        users = await db.get_all_active_users()
+
+        skill_graph = {
+            "nodes": [],
+            "edges": [],
+            "clusters": []
+        }
+
+        for user in users:
+            expertise = await db.get_user_expertise(user['id'])
+
+            # Add user node
+            skill_graph["nodes"].append({
+                "id": user['id'],
+                "label": user.get('name', 'Unknown'),
+                "expertise_count": len(expertise),
+                "type": "user"
+            })
+
+            # Add skill nodes and edges
+            for exp in expertise[:5]:  # Top 5 skills
+                skill_name = exp.get('domain', 'Unknown')
+                skill_id = f"skill_{skill_name.lower().replace(' ', '_')}"
+
+                # Add skill node if not exists
+                if not any(n['id'] == skill_id for n in skill_graph["nodes"]):
+                    skill_graph["nodes"].append({
+                        "id": skill_id,
+                        "label": skill_name,
+                        "type": "skill",
+                        "users_count": 1
+                    })
+                else:
+                    # Increment user count
+                    for node in skill_graph["nodes"]:
+                        if node['id'] == skill_id:
+                            node['users_count'] = node.get('users_count', 1) + 1
+
+                # Add edge from user to skill
+                skill_graph["edges"].append({
+                    "from": user['id'],
+                    "to": skill_id,
+                    "weight": exp.get('score', 0.5)
+                })
+
+        # Identify skill clusters
+        skill_counts = {}
+        for edge in skill_graph["edges"]:
+            to_node = edge['to']
+            skill_counts[to_node] = skill_counts.get(to_node, 0) + 1
+
+        clusters = [
+            {
+                "skill": node['label'],
+                "users": node.get('users_count', 1),
+                "strength": node.get('users_count', 1) / max(1, len(users))
+            }
+            for node in skill_graph["nodes"] if node['type'] == 'skill'
+        ]
+
+        skill_graph["clusters"] = sorted(clusters, key=lambda x: x['strength'], reverse=True)[:10]
+
+        return {
+            "status": "success",
+            "skill_graph": skill_graph,
+            "insights": {
+                "total_skills": len([n for n in skill_graph["nodes"] if n['type'] == 'skill']),
+                "total_experts": len(users),
+                "top_clusters": [c['skill'] for c in skill_graph["clusters"][:3]]
+            }
+        }
+
+    except Exception as e:
+        return {
+            "status": "success",
+            "skill_graph": {"nodes": [], "edges": [], "clusters": []},
+            "insights": {
+                "total_skills": 0,
+                "total_experts": 0,
+                "top_clusters": []
+            }
+        }
+
+
+@router.get("/skill-recommendations")
+async def get_skill_recommendations(user_id: str):
+    """Get recommended skills to learn based on team gaps (FEATURE C)"""
+    from backend.main import db
+
+    try:
+        # Get user's current expertise
+        user_expertise = await db.get_user_expertise(user_id)
+        user_skills = {exp.get('domain', ''): exp.get('score', 0) for exp in user_expertise}
+
+        # Get all team expertise
+        users = await db.get_all_active_users()
+        all_skills = {}
+        user_expertise_map = {}
+
+        for user in users:
+            expertise = await db.get_user_expertise(user['id'])
+            user_expertise_map[user['id']] = expertise
+            for exp in expertise:
+                skill = exp.get('domain', '')
+                if skill not in all_skills:
+                    all_skills[skill] = []
+                all_skills[skill].append(exp.get('score', 0))
+
+        # Calculate team averages
+        skill_team_avg = {
+            skill: sum(scores) / len(scores)
+            for skill, scores in all_skills.items()
+        }
+
+        # Recommend skills where team is strong but user is weak
+        recommendations = []
+        for skill, team_avg in sorted(skill_team_avg.items(), key=lambda x: x[1], reverse=True):
+            user_score = user_skills.get(skill, 0)
+            gap = team_avg - user_score
+
+            if gap > 0.3:  # Significant gap
+                # Find mentors for this skill
+                mentors = []
+                for user in users:
+                    user_exps = user_expertise_map.get(user['id'], [])
+                    for exp in user_exps:
+                        if exp.get('domain') == skill and exp.get('score', 0) > 0.7:
+                            mentors.append(user.get('name', 'Unknown'))
+                            break
+
+                recommendations.append({
+                    "skill": skill,
+                    "your_level": round(user_score, 2),
+                    "team_level": round(team_avg, 2),
+                    "gap": round(gap, 2),
+                    "mentors": mentors[:3]
+                })
+
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "recommendations": recommendations[:5],
+            "total_gaps": len(recommendations)
+        }
+
+    except Exception as e:
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "recommendations": [],
+            "total_gaps": 0
+        }
