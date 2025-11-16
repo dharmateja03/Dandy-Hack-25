@@ -64,11 +64,17 @@ async def get_sprint_health(request: Request = None):
                 "overdue": overdue_score
             },
             "metrics": {
-                "tasks_completed": completed,
-                "tasks_in_progress": in_progress,
-                "tasks_blocked": blocked,
-                "tasks_not_started": not_started,
-                "total_tasks": total_tasks
+                "completion_rate": int((completed / total_tasks * 100) if total_tasks > 0 else 0),
+                "tasks": {
+                    "completed": completed,
+                    "in_progress": in_progress,
+                    "blocked": blocked
+                },
+                "total_sprint_tasks": total_tasks,
+                "blockers": {
+                    "total": blocked,
+                    "critical": sum(1 for t in tasks if t.get("priority") == "high" and t.get("status") == "blocked")
+                }
             }
         }
 

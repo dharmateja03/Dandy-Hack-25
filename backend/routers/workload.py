@@ -56,7 +56,12 @@ async def get_team_workload_heatmap(request: Request = None):
                     "tasks": {
                         "in_progress": in_progress,
                         "blocked": blocked,
-                        "completed": completed
+                        "completed": completed,
+                        "total_assigned": in_progress + blocked + completed
+                    },
+                    "help": {
+                        "requests_made": 0,  # TODO: Get from database
+                        "requests_received": 0  # TODO: Get from database
                     }
                 })
 
