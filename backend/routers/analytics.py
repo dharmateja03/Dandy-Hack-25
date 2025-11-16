@@ -409,6 +409,14 @@ async def get_today_digest(request: Request = None):
             )
             help_requests = help_result.scalar() or 0
 
+        # Calculate productivity level
+        total_tasks = tasks_completed + tasks_in_progress + blockers_detected
+        if total_tasks == 0:
+            productivity = "low"
+        else:
+            completion_percent = (tasks_completed / total_tasks) * 100
+            productivity = "high" if completion_percent > 50 else ("moderate" if completion_percent > 25 else "low")
+
         return {
             "status": "success",
             "date": datetime.now().strftime("%B %d, %Y"),
@@ -416,12 +424,15 @@ async def get_today_digest(request: Request = None):
                 "tasks_completed": tasks_completed,
                 "tasks_in_progress": tasks_in_progress,
                 "blockers_detected": blockers_detected,
-                "help_requests": help_requests
+                "help_requests": help_requests,
+                "total_standups": len(standups) if 'standups' in locals() else 0
             },
             "key_metrics": {
                 "completion_rate": int((tasks_completed / (tasks_completed + tasks_in_progress) * 100) if (tasks_completed + tasks_in_progress) > 0 else 0),
                 "team_velocity": tasks_completed,
-                "blocker_count": blockers_detected
+                "blocker_count": blockers_detected,
+                "team_mood": "😊" if productivity == "high" else "😐" if productivity == "moderate" else "😟",
+                "productivity": productivity
             },
             "highlights": [
                 f"✅ {tasks_completed} tasks completed",
@@ -440,9 +451,16 @@ async def get_today_digest(request: Request = None):
                 "tasks_completed": 0,
                 "tasks_in_progress": 0,
                 "blockers_detected": 0,
-                "help_requests": 0
+                "help_requests": 0,
+                "total_standups": 0
             },
-            "key_metrics": {},
+            "key_metrics": {
+                "completion_rate": 0,
+                "team_velocity": 0,
+                "blocker_count": 0,
+                "team_mood": "😟",
+                "productivity": "low"
+            },
             "highlights": [],
             "recommendations": []
         }
@@ -462,6 +480,7 @@ async def get_insights_trends(days: int = 7, request: Request = None):
         positive_count = 0
         neutral_count = 0
         negative_count = 0
+        help_topics = {}
 
         for standup in standups:
             parsed = standup.get('parsed_data', {})
@@ -474,11 +493,37 @@ async def get_insights_trends(days: int = 7, request: Request = None):
             else:
                 neutral_count += 1
 
+            # Count help request topics
+            help_requests = parsed.get('help_requests', [])
+            for req in help_requests:
+                topic = req.get('topic', 'General Help')
+                if topic not in help_topics:
+                    help_topics[topic] = 0
+                help_topics[topic] += 1
+
         total = positive_count + neutral_count + negative_count
         if total == 0:
             total = 1  # Avoid division by zero
 
         overall_sentiment = 'positive' if positive_count > total/2 else ('negative' if negative_count > total/3 else 'neutral')
+
+        # Format top help topics
+        top_help_topics = [
+            {
+                "topic": topic,
+                "mentions": count,
+                "trending": "📈 Trending" if count > 5 else ("⏫ Active" if count > 2 else "")
+            }
+            for topic, count in sorted(help_topics.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+
+        # Add default topics if none exist
+        if not top_help_topics:
+            top_help_topics = [
+                {"topic": "General Help", "mentions": 0, "trending": ""},
+                {"topic": "Technical Support", "mentions": 0, "trending": ""},
+                {"topic": "Code Review", "mentions": 0, "trending": ""}
+            ]
 
         return {
             "status": "success",
@@ -492,7 +537,8 @@ async def get_insights_trends(days: int = 7, request: Request = None):
                 "patterns": [
                     "Team momentum is steady",
                     "Progress on scheduled tasks"
-                ]
+                ],
+                "top_help_topics": top_help_topics
             },
             "sentiment": {
                 "overall": overall_sentiment,
@@ -512,7 +558,12 @@ async def get_insights_trends(days: int = 7, request: Request = None):
             "trends": {
                 "period": "Last 7 days",
                 "metrics": [],
-                "patterns": []
+                "patterns": [],
+                "top_help_topics": [
+                    {"topic": "General Help", "mentions": 0, "trending": ""},
+                    {"topic": "Technical Support", "mentions": 0, "trending": ""},
+                    {"topic": "Code Review", "mentions": 0, "trending": ""}
+                ]
             },
             "sentiment": {
                 "overall": "neutral",
