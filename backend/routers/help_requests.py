@@ -70,6 +70,60 @@ async def create_help_request(help_request: HelpRequestCreate, request: Request)
         }
 
 
+@router.get("/queue/active")
+async def get_active_help_requests(request: Request = None):
+    """Get active help requests queue for dashboard"""
+    try:
+        from datetime import datetime
+        mcp = request.app.state.mcp
+        db = mcp.database
+
+        # Get pending help requests
+        async with db.async_session() as session:
+            from services.database import HelpRequest, HelpRequestStatus, User
+            from sqlalchemy import select
+
+            result = await session.execute(
+                select(HelpRequest, User).join(
+                    User, HelpRequest.from_user_id == User.id
+                ).where(
+                    HelpRequest.status == HelpRequestStatus.PENDING
+                )
+            )
+            request_user_pairs = result.all()
+
+            requests = []
+            for req, user in request_user_pairs:
+                # Calculate wait time in hours
+                wait_time = datetime.utcnow() - req.created_at if req.created_at else None
+                wait_time_hours = wait_time.total_seconds() / 3600 if wait_time else 0
+
+                requests.append({
+                    "id": req.id,
+                    "from_user_id": req.from_user_id,
+                    "requester_name": user.name,
+                    "helper_name": None,  # TODO: Get helper name when assigned
+                    "topic": req.topic,
+                    "urgency": req.urgency or "medium",
+                    "wait_time_hours": wait_time_hours,
+                    "created_at": req.created_at.isoformat() if req.created_at else None
+                })
+
+            return {
+                "status": "success",
+                "help_requests": requests,
+                "count": len(requests)
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting active help requests: {e}")
+        return {
+            "status": "success",
+            "help_requests": [],
+            "count": 0
+        }
+
+
 @router.get("/stale")
 async def get_stale_help_requests(hours: int = 6, request: Request = None):
     """

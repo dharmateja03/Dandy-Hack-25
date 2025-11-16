@@ -12,6 +12,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("")
+async def get_all_tasks(request: Request = None):
+    """
+    Get all tasks for dashboard
+    """
+    try:
+        mcp = request.app.state.mcp
+        db = mcp.database
+
+        tasks = await db.get_all_tasks()
+
+        return {"tasks": tasks}
+
+    except Exception as e:
+        logger.error(f"Error getting all tasks: {e}")
+        return {"tasks": []}
+
+
 @router.get("/user/{user_id}")
 async def get_user_tasks(user_id: str, status: Optional[str] = None, request: Request = None):
     """

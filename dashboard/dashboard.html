@@ -6,6 +6,8 @@
     <title>MCP Dashboard - Model Context Protocol</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/@viz-js/viz@3.2.4/lib/viz-standalone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape-cose-bilkent/4.1.0/cytoscape-cose-bilkent.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -236,6 +238,400 @@
             color: #065f46;
         }
 
+        /* Help Request Item */
+        .help-request-item {
+            padding: 1.5rem;
+            border-left: 4px solid #3b82f6;
+            background: #eff6ff;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .help-request-item:hover {
+            transform: translateX(4px);
+        }
+
+        .help-request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .help-request-requester {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #1a202c;
+        }
+
+        .help-request-helper {
+            font-size: 0.875rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .help-request-topic {
+            font-size: 1rem;
+            color: #2d3748;
+            margin: 0.5rem 0;
+            font-weight: 500;
+        }
+
+        .help-request-meta {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        .urgency-low {
+            color: #10b981;
+        }
+
+        .urgency-medium {
+            color: #f59e0b;
+        }
+
+        .urgency-high {
+            color: #ef4444;
+        }
+
+        /* Blocker Item */
+        .blocker-item {
+            padding: 1.5rem;
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .blocker-item:hover {
+            transform: translateX(4px);
+        }
+
+        .blocker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .blocker-user {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #1a202c;
+        }
+
+        .blocker-description {
+            font-size: 1rem;
+            color: #2d3748;
+            margin: 0.5rem 0;
+        }
+
+        .blocker-meta {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        .severity-low {
+            color: #10b981;
+        }
+
+        .severity-medium {
+            color: #f59e0b;
+        }
+
+        .severity-high {
+            color: #ef4444;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: #a0aec0;
+        }
+
+        /* Sprint Health */
+        .health-score-container {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .health-score-circle {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .health-score-excellent {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .health-score-good {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+
+        .health-score-fair {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .health-score-poor {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .health-info {
+            flex: 1;
+        }
+
+        .health-status {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .sprint-info {
+            color: #718096;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .metric-box {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .metric-label {
+            font-size: 0.875rem;
+            color: #718096;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1a202c;
+        }
+
+        .metric-detail {
+            font-size: 0.8rem;
+            color: #a0aec0;
+            margin-top: 0.25rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+        }
+
+        /* Workload Heatmap */
+        .workload-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .workload-card {
+            padding: 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid;
+            background: #f8fafc;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+
+        .workload-card:hover {
+            transform: translateY(-4px);
+        }
+
+        .workload-card.critical {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .workload-card.overloaded {
+            border-left-color: #f97316;
+            background: #fef3c7;
+        }
+
+        .workload-card.moderate {
+            border-left-color: #eab308;
+            background: #fefce8;
+        }
+
+        .workload-card.available {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .workload-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .workload-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #1a202c;
+        }
+
+        .workload-score {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .workload-role {
+            font-size: 0.8rem;
+            color: #718096;
+            margin-bottom: 0.5rem;
+            text-transform: capitalize;
+        }
+
+        .workload-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+        }
+
+        .workload-detail-item {
+            font-size: 0.875rem;
+            color: #4a5568;
+        }
+
+        .workload-detail-label {
+            color: #718096;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .workload-detail-value {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Insights */
+        .insights-section {
+            margin-bottom: 2rem;
+        }
+
+        .insights-section h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1a202c;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 0.5rem;
+        }
+
+        .insights-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .insight-item {
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+        }
+
+        .insight-label {
+            font-size: 0.875rem;
+            color: #718096;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .insight-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a202c;
+            margin-bottom: 0.25rem;
+        }
+
+        .insight-detail {
+            font-size: 0.8rem;
+            color: #a0aec0;
+        }
+
+        .sentiment-bar {
+            display: flex;
+            gap: 2px;
+            height: 20px;
+            margin-top: 0.5rem;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .sentiment-positive {
+            background: #10b981;
+            flex: var(--positive-width, 0);
+        }
+
+        .sentiment-neutral {
+            background: #eab308;
+            flex: var(--neutral-width, 0);
+        }
+
+        .sentiment-negative {
+            background: #ef4444;
+            flex: var(--negative-width, 0);
+        }
+
+        .topic-tag {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
         /* Loading */
         .loading {
             text-align: center;
@@ -361,11 +757,12 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" onclick="showTab('overview')">Overview</button>
-            <button class="tab" onclick="showTab('standups')">Standups</button>
-            <button class="tab" onclick="showTab('tasks')">Tasks</button>
-            <button class="tab" onclick="showTab('analytics')">Analytics</button>
-            <button class="tab" onclick="showTab('dependencies')">Dependencies</button>
+            <button class="tab active" onclick="showTab('dashboard')">📊 Dashboard</button>
+            <button class="tab" onclick="showTab('sprint-trends')">📈 Sprint & Trends</button>
+            <button class="tab" onclick="showTab('team-queue')">🆘 Team Queue</button>
+            <button class="tab" onclick="showTab('workload')">👥 Team Workload</button>
+            <button class="tab" onclick="showTab('tasks-standups')">✅ Tasks & Standups</button>
+            <button class="tab" onclick="showTab('dependencies')">🔗 Dependencies</button>
         </div>
 
         <!-- Overview Tab -->
@@ -382,6 +779,87 @@
                 <div id="recent-activity" class="loading">
                     <div class="spinner"></div>
                     Loading activity...
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Digest Tab -->
+        <div id="digest" class="tab-content">
+            <div class="card">
+                <h2>📋 Today's Daily Digest</h2>
+                <div id="digest-content" class="loading">
+                    <div class="spinner"></div>
+                    Loading today's digest...
+                </div>
+            </div>
+        </div>
+
+        <!-- Insights Tab -->
+        <div id="insights" class="tab-content">
+            <div class="card">
+                <h2>💡 Conversation Insights & Trends</h2>
+                <div id="insights-content" class="loading">
+                    <div class="spinner"></div>
+                    Loading conversation insights...
+                </div>
+            </div>
+        </div>
+
+        <!-- Sprint Health Tab -->
+        <div id="sprint-health" class="tab-content">
+            <div class="card">
+                <h2>📈 Sprint Health Overview</h2>
+                <div id="sprint-health-content" class="loading">
+                    <div class="spinner"></div>
+                    Loading sprint health...
+                </div>
+            </div>
+        </div>
+
+        <!-- Team Workload Tab -->
+        <div id="workload" class="tab-content">
+            <div class="card">
+                <h2>🔥 Team Workload Heatmap</h2>
+                <div id="workload-heatmap" class="loading">
+                    <div class="spinner"></div>
+                    Loading team workload...
+                </div>
+            </div>
+        </div>
+
+        <!-- Team Request Queue Tab -->
+        <div id="team-queue" class="tab-content">
+            <div class="card">
+                <h2>🔍 Search & Filter</h2>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <input type="text" id="queue-search" placeholder="Search by name, topic..." style="flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <select id="queue-urgency-filter" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="">All Urgency Levels</option>
+                        <option value="low">🟢 Low</option>
+                        <option value="medium">🟡 Medium</option>
+                        <option value="high">🔴 High</option>
+                    </select>
+                    <select id="queue-sort" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="wait-time">Sort: Wait Time (Longest)</option>
+                        <option value="urgency">Sort: Urgency (High First)</option>
+                        <option value="recent">Sort: Most Recent</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🙋 Active Help Requests</h2>
+                <div id="help-request-list" class="loading">
+                    <div class="spinner"></div>
+                    Loading help requests...
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🚨 Active Blockers</h2>
+                <div id="blocker-list" class="loading">
+                    <div class="spinner"></div>
+                    Loading blockers...
                 </div>
             </div>
         </div>
@@ -428,8 +906,17 @@
         <!-- Dependencies Tab -->
         <div id="dependencies" class="tab-content">
             <div class="card">
-                <h2>🔗 Task Dependencies</h2>
-                <div id="dependency-graph"></div>
+                <h2>🔗 Task Dependencies Graph</h2>
+                <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                    <input type="text" id="graph-search" placeholder="Search tasks..." style="flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <button onclick="resetGraphZoom()" style="padding: 0.5rem 1rem; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 Reset View</button>
+                    <button onclick="toggleGraphLayout()" style="padding: 0.5rem 1rem; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">📐 Toggle Layout</button>
+                </div>
+                <div id="dependency-graph" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px; background: white;"></div>
+                <div style="margin-top: 1rem; font-size: 0.875rem; color: #666;">
+                    <p>💡 <strong>Interactive Graph:</strong> Drag to move, scroll to zoom, click nodes for details</p>
+                    <p style="margin-top: 0.5rem;">🟢 Available • 🟡 In Progress • 🔴 Blocked • ⚪ Not Started</p>
+                </div>
             </div>
         </div>
     </div>
@@ -437,13 +924,45 @@
     <script>
         const MCP_API_URL = 'http://localhost:8000';
 
-        // Tab switching
+        // Tab switching with mapping for merged tabs
         function showTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
             event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
+
+            // Map new tab names to actual element IDs
+            const tabMap = {
+                'dashboard': 'overview',           // Overview + Daily Digest
+                'sprint-trends': 'sprint-health',  // Sprint Health + Analytics
+                'team-queue': 'team-queue',
+                'workload': 'workload',
+                'tasks-standups': 'standups',      // Standups + Tasks
+                'dependencies': 'dependencies'
+            };
+
+            const elementId = tabMap[tabName] || tabName;
+            const element = document.getElementById(elementId);
+            if (element) element.classList.add('active');
+
+            // Load data for the tab
+            if (tabName === 'dashboard') {
+                loadStandups();
+                loadDigest();
+            } else if (tabName === 'sprint-trends') {
+                loadSprintHealth();
+                // Note: Analytics chart is already initialized
+            } else if (tabName === 'tasks-standups') {
+                loadStandups();
+                // Tasks loaded separately if needed
+            } else if (tabName === 'team-queue') {
+                loadHelpRequests();
+                loadBlockers();
+            } else if (tabName === 'workload') {
+                loadWorkloadHeatmap();
+            } else if (tabName === 'dependencies') {
+                renderDependencyGraph();
+            }
         }
 
         // Load standups
@@ -565,40 +1084,857 @@
             });
         }
 
-        // Render Dependency Graph
+        // Global Cytoscape instance for dependency graph
+        let cyInstance = null;
+        let currentLayout = 'cose';
+        let allTasks = [];
+
+        // Load tasks for dependency graph
+        async function loadTasksForGraph() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/tasks`);
+                const data = await response.json();
+                allTasks = data.tasks || [];
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+                allTasks = [];
+            }
+        }
+
+        // Render Dependency Graph using Cytoscape.js
         function renderDependencyGraph() {
-            const graphvizDot = `
-                digraph Dependencies {
-                    rankdir=LR;
-                    node [shape=box, style=rounded, fontname="Arial"];
+            const graphContainer = document.getElementById('dependency-graph');
+            if (!graphContainer) return;
 
-                    "OAuth Auth" [fillcolor="#dbeafe", style="rounded,filled"];
-                    "Dashboard UI" [fillcolor="#dbeafe", style="rounded,filled"];
-                    "Redis Cache" [fillcolor="#f3f4f6", style="rounded,filled"];
-                    "CI/CD Pipeline" [fillcolor="#d1fae5", style="rounded,filled"];
-                    "DB Migration" [fillcolor="#dbeafe", style="rounded,filled"];
+            // Sample dependency data - in production, this comes from backend
+            const nodes = [
+                { id: 'auth', label: 'OAuth Auth', status: 'in-progress' },
+                { id: 'dashboard', label: 'Dashboard UI', status: 'in-progress' },
+                { id: 'cache', label: 'Redis Cache', status: 'available' },
+                { id: 'ci-cd', label: 'CI/CD Pipeline', status: 'available' },
+                { id: 'migration', label: 'DB Migration', status: 'blocked' },
+                { id: 'api', label: 'API Gateway', status: 'in-progress' },
+                { id: 'websockets', label: 'WebSocket Server', status: 'not-started' },
+                { id: 'monitoring', label: 'Monitoring Setup', status: 'available' },
+                { id: 'logging', label: 'Centralized Logging', status: 'not-started' },
+                { id: 'security', label: 'Security Audit', status: 'blocked' }
+            ];
 
-                    "Dashboard UI" -> "OAuth Auth" [label="depends on"];
-                    "Redis Cache" -> "OAuth Auth" [label="depends on"];
-                    "DB Migration" -> "CI/CD Pipeline" [label="requires"];
-                }
-            `;
+            const edges = [
+                { source: 'dashboard', target: 'auth', label: 'depends on' },
+                { source: 'dashboard', target: 'api', label: 'depends on' },
+                { source: 'cache', target: 'auth', label: 'depends on' },
+                { source: 'migration', target: 'ci-cd', label: 'requires' },
+                { source: 'api', target: 'auth', label: 'depends on' },
+                { source: 'websockets', target: 'api', label: 'depends on' },
+                { source: 'monitoring', target: 'api', label: 'monitors' },
+                { source: 'logging', target: 'api', label: 'logs to' },
+                { source: 'security', target: 'api', label: 'audits' },
+                { source: 'ci-cd', target: 'api', label: 'builds' }
+            ];
 
-            Viz.instance().then(viz => {
-                const svg = viz.renderSVGElement(graphvizDot);
-                document.getElementById('dependency-graph').innerHTML = '';
-                document.getElementById('dependency-graph').appendChild(svg);
+            // Build Cytoscape elements
+            const cyElements = [];
+
+            // Add nodes
+            nodes.forEach(node => {
+                cyElements.push({
+                    data: {
+                        id: node.id,
+                        label: node.label,
+                        status: node.status
+                    }
+                });
             });
+
+            // Add edges
+            edges.forEach(edge => {
+                cyElements.push({
+                    data: {
+                        source: edge.source,
+                        target: edge.target,
+                        label: edge.label
+                    }
+                });
+            });
+
+            // Destroy old instance if exists
+            if (cyInstance) {
+                cyInstance.destroy();
+            }
+
+            // Initialize Cytoscape
+            cyInstance = cytoscape({
+                container: graphContainer,
+                elements: cyElements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'content': 'data(label)',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'width': '120px',
+                            'height': '80px',
+                            'background-color': function(ele) {
+                                const status = ele.data('status');
+                                switch(status) {
+                                    case 'available': return '#10b981';
+                                    case 'in-progress': return '#f59e0b';
+                                    case 'blocked': return '#ef4444';
+                                    case 'not-started': return '#d1d5db';
+                                    default: return '#667eea';
+                                }
+                            },
+                            'color': '#ffffff',
+                            'font-size': '12px',
+                            'font-weight': 'bold',
+                            'border-width': '2px',
+                            'border-color': 'rgba(0,0,0,0.2)',
+                            'padding': '8px',
+                            'text-wrap': 'wrap'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'target-arrow-shape': 'triangle',
+                            'target-arrow-color': '#999',
+                            'line-color': '#999',
+                            'arrow-scale': 1.2,
+                            'curve-style': 'bezier',
+                            'width': '2px'
+                        }
+                    },
+                    {
+                        selector: 'node:hover',
+                        style: {
+                            'border-width': '3px',
+                            'border-color': '#667eea',
+                            'box-shadow': '0 0 10px rgba(102, 126, 234, 0.5)',
+                            'width': '130px',
+                            'height': '90px'
+                        }
+                    },
+                    {
+                        selector: 'node.highlighted',
+                        style: {
+                            'background-color': '#667eea',
+                            'border-width': '3px',
+                            'border-color': '#667eea',
+                            'box-shadow': '0 0 15px rgba(102, 126, 234, 0.8)'
+                        }
+                    },
+                    {
+                        selector: 'node.filtered-out',
+                        style: {
+                            'opacity': 0.2
+                        }
+                    },
+                    {
+                        selector: 'edge.filtered-out',
+                        style: {
+                            'opacity': 0.2
+                        }
+                    }
+                ],
+                layout: {
+                    name: currentLayout === 'cose' ? 'cose' : 'breadthfirst',
+                    directed: true,
+                    animate: true,
+                    animationDuration: 500,
+                    avoidOverlap: true,
+                    nodeSpacing: 10,
+                    nodeDimensionsIncludeLabels: true,
+                    spacingFactor: 1.5
+                }
+            });
+
+            // Add interactivity
+            cyInstance.on('tap', function(evt) {
+                if (evt.target === cyInstance) {
+                    // Clicked on background
+                    cyInstance.elements().removeClass('highlighted');
+                } else {
+                    const node = evt.target;
+                    if (node.isNode()) {
+                        // Clear previous selection
+                        cyInstance.elements().removeClass('highlighted');
+
+                        // Highlight clicked node and connected nodes
+                        node.addClass('highlighted');
+                        node.connectedEdges().addClass('highlighted');
+                        node.connectedEdges().target().addClass('highlighted');
+                        node.connectedEdges().source().addClass('highlighted');
+
+                        // Show node details in console (in production, show in modal)
+                        console.log('Node selected:', {
+                            id: node.id(),
+                            label: node.data('label'),
+                            status: node.data('status'),
+                            dependencies: node.predecessors().map(n => n.id()),
+                            dependents: node.successors().map(n => n.id())
+                        });
+                    }
+                }
+            });
+
+            // Mouse wheel zoom
+            cyInstance.userZoomingEnabled(true);
+            cyInstance.panningEnabled(true);
+
+            // Fit graph to view after rendering
+            setTimeout(() => {
+                cyInstance.fit(cyInstance.elements(), 50);
+            }, 100);
+
+            // Setup search functionality
+            const searchInput = document.getElementById('graph-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', filterGraphSearch);
+            }
+        }
+
+        // Filter graph by search term
+        function filterGraphSearch() {
+            if (!cyInstance) return;
+
+            const searchTerm = document.getElementById('graph-search')?.value.toLowerCase() || '';
+
+            cyInstance.elements().removeClass('filtered-out');
+
+            if (searchTerm.length > 0) {
+                // Find matching nodes
+                const matchingNodes = cyInstance.nodes().filter(node =>
+                    node.data('label').toLowerCase().includes(searchTerm) ||
+                    node.id().toLowerCase().includes(searchTerm)
+                );
+
+                // Get all connected nodes
+                const connectedNodes = new Set();
+                matchingNodes.forEach(node => {
+                    connectedNodes.add(node);
+                    node.connectedEdges().forEach(edge => {
+                        connectedNodes.add(edge.source());
+                        connectedNodes.add(edge.target());
+                    });
+                });
+
+                // Hide non-matching elements
+                cyInstance.elements().forEach(ele => {
+                    let isInConnectedNodes = false;
+                    for (let node of connectedNodes) {
+                        if (node.id() === ele.id()) {
+                            isInConnectedNodes = true;
+                            break;
+                        }
+                    }
+                    let isInMatchingNodes = false;
+                    for (let node of matchingNodes) {
+                        if (node.id() === ele.id()) {
+                            isInMatchingNodes = true;
+                            break;
+                        }
+                    }
+                    if (!isInConnectedNodes && !isInMatchingNodes) {
+                        ele.addClass('filtered-out');
+                    }
+                });
+
+                // Highlight matching nodes
+                matchingNodes.addClass('highlighted');
+                matchingNodes.connectedEdges().addClass('highlighted');
+            }
+        }
+
+        // Reset graph zoom and pan
+        function resetGraphZoom() {
+            if (cyInstance) {
+                cyInstance.animate({
+                    fit: {
+                        eles: cyInstance.elements(),
+                        padding: 50
+                    },
+                    duration: 500
+                });
+
+                // Clear search
+                const searchInput = document.getElementById('graph-search');
+                if (searchInput) {
+                    searchInput.value = '';
+                    filterGraphSearch();
+                }
+            }
+        }
+
+        // Toggle between different graph layouts
+        function toggleGraphLayout() {
+            if (!cyInstance) return;
+
+            currentLayout = currentLayout === 'cose' ? 'breadthfirst' : 'cose';
+
+            const layout = cyInstance.layout({
+                name: currentLayout === 'cose' ? 'cose' : 'breadthfirst',
+                directed: true,
+                animate: true,
+                animationDuration: 500,
+                avoidOverlap: true,
+                nodeSpacing: 10,
+                nodeDimensionsIncludeLabels: true,
+                spacingFactor: 1.5
+            });
+
+            layout.run();
+
+            // Update button text
+            const button = document.querySelector('button[onclick="toggleGraphLayout()"]');
+            if (button) {
+                button.textContent = currentLayout === 'cose' ? '📐 Hierarchical Layout' : '📐 Force-Directed Layout';
+            }
+        }
+
+        // Global variable to store help requests for filtering
+        let allHelpRequests = [];
+
+        // Load help requests
+        async function loadHelpRequests() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/help/queue/active`);
+                const data = await response.json();
+
+                allHelpRequests = data.help_requests || [];
+                filterAndSortQueue();
+
+                // Attach event listeners for filtering
+                document.getElementById('queue-search')?.addEventListener('input', filterAndSortQueue);
+                document.getElementById('queue-urgency-filter')?.addEventListener('change', filterAndSortQueue);
+                document.getElementById('queue-sort')?.addEventListener('change', filterAndSortQueue);
+
+                document.getElementById('help-requests').textContent = data.count;
+            } catch (error) {
+                console.error('Error loading help requests:', error);
+                document.getElementById('help-request-list').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load help requests.</p>';
+            }
+        }
+
+        // Filter and sort help requests
+        function filterAndSortQueue() {
+            const searchTerm = document.getElementById('queue-search')?.value.toLowerCase() || '';
+            const urgencyFilter = document.getElementById('queue-urgency-filter')?.value || '';
+            const sortBy = document.getElementById('queue-sort')?.value || 'wait-time';
+
+            // Filter
+            let filtered = allHelpRequests.filter(req => {
+                const matchesSearch = !searchTerm ||
+                    req.requester_name.toLowerCase().includes(searchTerm) ||
+                    req.helper_name.toLowerCase().includes(searchTerm) ||
+                    req.topic.toLowerCase().includes(searchTerm);
+
+                const matchesUrgency = !urgencyFilter || req.urgency === urgencyFilter;
+
+                return matchesSearch && matchesUrgency;
+            });
+
+            // Sort
+            filtered.sort((a, b) => {
+                if (sortBy === 'wait-time') {
+                    return b.wait_time_hours - a.wait_time_hours;
+                } else if (sortBy === 'urgency') {
+                    const urgencyOrder = { high: 3, medium: 2, low: 1 };
+                    return (urgencyOrder[b.urgency] || 0) - (urgencyOrder[a.urgency] || 0);
+                } else if (sortBy === 'recent') {
+                    return new Date(b.created_at) - new Date(a.created_at);
+                }
+                return 0;
+            });
+
+            // Render
+            const helpRequestList = document.getElementById('help-request-list');
+            if (filtered.length > 0) {
+                const html = filtered.map(req => {
+                    const waitTimeStr = req.wait_time_hours > 24
+                        ? `${Math.round(req.wait_time_hours / 24)} days`
+                        : `${req.wait_time_hours.toFixed(1)} hours`;
+
+                    return `
+                        <div class="help-request-item">
+                            <div class="help-request-header">
+                                <div>
+                                    <div class="help-request-requester">${req.requester_name} asking for help</div>
+                                    <div class="help-request-helper">→ ${req.helper_name || 'Unassigned'}</div>
+                                </div>
+                                <div class="urgency-${req.urgency}">${req.urgency.toUpperCase()}</div>
+                            </div>
+                            <div class="help-request-topic">📌 ${req.topic}</div>
+                            <div class="help-request-meta">
+                                <span>Waiting: <strong>${waitTimeStr}</strong></span>
+                                <span>Status: <strong>${req.status}</strong></span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                helpRequestList.innerHTML = html;
+            } else {
+                helpRequestList.innerHTML = '<div class="empty-state">✨ No results match your filters</div>';
+            }
+        }
+
+        // Load blockers
+        async function loadBlockers() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/blockers/queue/active`);
+                const data = await response.json();
+
+                const blockerList = document.getElementById('blocker-list');
+
+                if (data.blockers && data.blockers.length > 0) {
+                    const html = data.blockers.map(blocker => {
+                        const timeStr = blocker.time_since_creation_hours > 24
+                            ? `${Math.round(blocker.time_since_creation_hours / 24)} days`
+                            : `${blocker.time_since_creation_hours} hours`;
+
+                        return `
+                            <div class="blocker-item">
+                                <div class="blocker-header">
+                                    <div>
+                                        <div class="blocker-user">${blocker.user_name}</div>
+                                    </div>
+                                    <div class="severity-${blocker.severity}">${blocker.severity.toUpperCase()}</div>
+                                </div>
+                                <div class="blocker-description">${blocker.description}</div>
+                                <div class="blocker-meta">
+                                    <span>Stuck for: <strong>${timeStr}</strong></span>
+                                    <span>Status: <strong>${blocker.is_resolved ? 'Resolved' : 'Unresolved'}</strong></span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    blockerList.innerHTML = html;
+                    document.getElementById('blocker-count').textContent = data.count;
+                } else {
+                    blockerList.innerHTML = '<div class="empty-state">✨ No active blockers</div>';
+                    document.getElementById('blocker-count').textContent = '0';
+                }
+            } catch (error) {
+                console.error('Error loading blockers:', error);
+                document.getElementById('blocker-list').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load blockers.</p>';
+            }
+        }
+
+        // Load team workload heatmap
+        async function loadWorkloadHeatmap() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/workload/team-heatmap`);
+                const data = await response.json();
+
+                const workloadHeatmap = document.getElementById('workload-heatmap');
+
+                if (data.team_workload && data.team_workload.length > 0) {
+                    const html = data.team_workload.map(member => {
+                        const statusClass = member.workload_status;
+                        const tasksInProgress = member.tasks.in_progress + member.tasks.blocked;
+
+                        return `
+                            <div class="workload-card ${statusClass}">
+                                <div class="workload-header">
+                                    <div>
+                                        <div class="workload-name">${member.user_name}</div>
+                                        <div class="workload-role">${member.role}</div>
+                                    </div>
+                                    <div class="workload-score">${member.workload_emoji}</div>
+                                </div>
+
+                                <div style="margin-bottom: 0.75rem;">
+                                    <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.25rem;">Workload Score</div>
+                                    <div style="font-size: 2rem; font-weight: 700; color: #1a202c;">${member.workload_score}/100</div>
+                                </div>
+
+                                <div class="workload-details">
+                                    <div class="workload-detail-item">
+                                        <div class="workload-detail-label">Tasks Active</div>
+                                        <div class="workload-detail-value">${tasksInProgress}</div>
+                                    </div>
+                                    <div class="workload-detail-item">
+                                        <div class="workload-detail-label">Tasks Assigned</div>
+                                        <div class="workload-detail-value">${member.tasks.total_assigned}</div>
+                                    </div>
+                                    <div class="workload-detail-item">
+                                        <div class="workload-detail-label">Help Needed</div>
+                                        <div class="workload-detail-value">${member.help.requests_made}</div>
+                                    </div>
+                                    <div class="workload-detail-item">
+                                        <div class="workload-detail-label">Help Given</div>
+                                        <div class="workload-detail-value">${member.help.requests_received}</div>
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(0,0,0,0.1); font-size: 0.8rem; color: #a0aec0;">
+                                    Status: <strong>${member.workload_status.toUpperCase()}</strong>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    workloadHeatmap.innerHTML = `<div class="workload-grid">${html}</div>`;
+                } else {
+                    workloadHeatmap.innerHTML = '<div class="empty-state">✨ No team members found</div>';
+                }
+            } catch (error) {
+                console.error('Error loading workload heatmap:', error);
+                document.getElementById('workload-heatmap').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load workload heatmap.</p>';
+            }
+        }
+
+        // Load daily digest
+        async function loadDigest() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/digest/today`);
+                const data = await response.json();
+
+                const digestContent = document.getElementById('digest-content');
+
+                if (data.status === 'success') {
+                    const summary = data.summary;
+                    const metrics = data.key_metrics;
+                    const highlights = data.highlights;
+                    const recommendations = data.recommendations;
+
+                    const html = `
+                        <div style="margin-bottom: 2rem;">
+                            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: #1a202c;">📊 Today's Summary - ${data.date}</h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                                <div style="padding: 1rem; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #10b981;">
+                                    <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">Tasks Completed</div>
+                                    <div style="font-size: 1.75rem; font-weight: 700; color: #10b981;">${summary.tasks_completed}</div>
+                                </div>
+                                <div style="padding: 1rem; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                                    <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">In Progress</div>
+                                    <div style="font-size: 1.75rem; font-weight: 700; color: #3b82f6;">${summary.tasks_in_progress}</div>
+                                </div>
+                                <div style="padding: 1rem; background: #fef2f2; border-radius: 8px; border-left: 4px solid #ef4444;">
+                                    <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">Blockers</div>
+                                    <div style="font-size: 1.75rem; font-weight: 700; color: #ef4444;">${summary.blockers_detected}</div>
+                                </div>
+                                <div style="padding: 1rem; background: #dbeafe; border-radius: 8px; border-left: 4px solid #1e40af;">
+                                    <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">Help Requests</div>
+                                    <div style="font-size: 1.75rem; font-weight: 700; color: #1e40af;">${summary.help_requests}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 2rem;">
+                            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: #1a202c;">🎯 Team Status</h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                                <div style="padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                                    <div style="font-size: 0.875rem; color: #718096; text-transform: uppercase; margin-bottom: 0.5rem;">Team Mood</div>
+                                    <div style="font-size: 1.5rem; font-weight: 700; color: #1a202c;">${metrics.team_mood}</div>
+                                </div>
+                                <div style="padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                                    <div style="font-size: 0.875rem; color: #718096; text-transform: uppercase; margin-bottom: 0.5rem;">Productivity</div>
+                                    <div style="font-size: 1.5rem; font-weight: 700; color: ${metrics.productivity === 'high' ? '#10b981' : metrics.productivity === 'moderate' ? '#f59e0b' : '#ef4444'};">${metrics.productivity.toUpperCase()}</div>
+                                </div>
+                                <div style="padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                                    <div style="font-size: 0.875rem; color: #718096; text-transform: uppercase; margin-bottom: 0.5rem;">Team Participation</div>
+                                    <div style="font-size: 1.5rem; font-weight: 700; color: #1a202c;">${summary.total_standups} standups</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 2rem;">
+                            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: #1a202c;">🚨 Critical Items</h3>
+                            ${highlights.major_blockers.length > 0 ? `
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">Active Blockers:</div>
+                                    ${highlights.major_blockers.map(b => `
+                                        <div style="padding: 0.75rem; background: #fef2f2; border-left: 3px solid #ef4444; margin-bottom: 0.5rem; border-radius: 4px;">
+                                            <strong>${b.description}</strong><br>
+                                            <span style="font-size: 0.8rem; color: #718096;">Owner: ${b.owner} | Severity: ${b.severity}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+
+                            ${highlights.outstanding_help_requests.length > 0 ? `
+                                <div>
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">Help Requests Pending:</div>
+                                    ${highlights.outstanding_help_requests.map(hr => `
+                                        <div style="padding: 0.75rem; background: #eff6ff; border-left: 3px solid #3b82f6; margin-bottom: 0.5rem; border-radius: 4px;">
+                                            <strong>${hr.topic}</strong><br>
+                                            <span style="font-size: 0.8rem; color: #718096;">From: ${hr.from} | Status: ${hr.status}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div>
+                            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: #1a202c;">📅 Action Items & Priorities</h3>
+                            <div style="padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">Today's Action Items:</div>
+                                    ${recommendations.action_items.map(item => `
+                                        <div style="padding: 0.5rem; margin-bottom: 0.25rem;">✓ ${item}</div>
+                                    `).join('')}
+                                </div>
+                                <div style="border-top: 1px solid #e2e8f0; padding-top: 1rem;">
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">Tomorrow's Priorities:</div>
+                                    ${recommendations.priorities_for_tomorrow.map(priority => `
+                                        <div style="padding: 0.5rem; margin-bottom: 0.25rem;">→ ${priority}</div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    digestContent.innerHTML = html;
+                } else {
+                    digestContent.innerHTML = '<p style="color: #ef4444;">Unable to load digest data.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading digest:', error);
+                document.getElementById('digest-content').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load daily digest.</p>';
+            }
+        }
+
+        // Load conversation insights
+        async function loadInsights() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/insights/trends?days=7`);
+                const data = await response.json();
+
+                const insightsContent = document.getElementById('insights-content');
+
+                if (data.status === 'success') {
+                    const trends = data.trends;
+                    const sentiment = data.sentiment;
+
+                    // Calculate sentiment percentages
+                    const totalSentiments = sentiment.distribution.positive + sentiment.distribution.neutral + sentiment.distribution.negative;
+                    const posPercent = totalSentiments > 0 ? (sentiment.distribution.positive / totalSentiments * 100).toFixed(0) : 0;
+                    const neuPercent = totalSentiments > 0 ? (sentiment.distribution.neutral / totalSentiments * 100).toFixed(0) : 0;
+                    const negPercent = totalSentiments > 0 ? (sentiment.distribution.negative / totalSentiments * 100).toFixed(0) : 0;
+
+                    const html = `
+                        <div class="insights-section">
+                            <h3>📊 Team Sentiment</h3>
+                            <div class="insights-row">
+                                <div class="insight-item">
+                                    <div class="insight-label">Overall Mood</div>
+                                    <div class="insight-value">${sentiment.overall === 'positive' ? '😊' : sentiment.overall === 'negative' ? '😞' : '😐'}</div>
+                                    <div class="insight-detail">${sentiment.overall.toUpperCase()}</div>
+                                    <div class="sentiment-bar">
+                                        <div class="sentiment-positive" style="--positive-width: ${posPercent}%"></div>
+                                        <div class="sentiment-neutral" style="--neutral-width: ${neuPercent}%"></div>
+                                        <div class="sentiment-negative" style="--negative-width: ${negPercent}%"></div>
+                                    </div>
+                                </div>
+                                <div class="insight-item">
+                                    <div class="insight-label">Positive Standups</div>
+                                    <div class="insight-value">${sentiment.distribution.positive}</div>
+                                    <div class="insight-detail">${posPercent}% of responses</div>
+                                </div>
+                                <div class="insight-item">
+                                    <div class="insight-label">Negative Standups</div>
+                                    <div class="insight-value">${sentiment.distribution.negative}</div>
+                                    <div class="insight-detail">${negPercent}% of responses</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="insights-section">
+                            <h3>🆘 Top Help Topics</h3>
+                            <div class="insights-row">
+                                ${trends.top_help_topics.slice(0, 6).map(topic => `
+                                    <div class="insight-item">
+                                        <div class="insight-label">Mentions</div>
+                                        <div class="insight-value">${topic.mentions}</div>
+                                        <div class="insight-detail">${topic.topic}</div>
+                                        <div style="margin-top: 0.5rem;">
+                                            <span class="topic-tag">${topic.trending}</span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="insights-section">
+                            <h3>👥 Top Help Requesters</h3>
+                            <div class="insights-row">
+                                ${trends.top_help_requesters.slice(0, 5).map(requester => `
+                                    <div class="insight-item">
+                                        <div class="insight-label">Help Requests</div>
+                                        <div class="insight-value">${requester.help_requests_made}</div>
+                                        <div class="insight-detail">${requester.user_name}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="insights-section">
+                            <h3>🤝 Top Helpers (Who Helps Most)</h3>
+                            ${trends.help_network.slice(0, 5).length > 0 ? `
+                                <div class="insights-row">
+                                    ${trends.help_network.slice(0, 5).map(helper => `
+                                        <div class="insight-item">
+                                            <div class="insight-label">People Helped</div>
+                                            <div class="insight-value">${helper.helped_count}</div>
+                                            <div class="insight-detail">${helper.helper_name}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : '<p>No help network data yet</p>'}
+                        </div>
+
+                        <div class="insights-section">
+                            <h3>⚠️ Recurring Blockers</h3>
+                            <div style="padding: 1rem; background: #fef2f2; border-radius: 8px;">
+                                ${trends.recurring_blockers.length > 0 ? trends.recurring_blockers.map(blocker => `
+                                    <div style="padding: 0.5rem 0; border-bottom: 1px solid rgba(0,0,0,0.1);">
+                                        <strong style="color: #991b1b;">🚨 ${blocker.description}</strong>
+                                        <div style="font-size: 0.8rem; color: #718096; margin-top: 0.25rem;">Reported ${blocker.count} time(s)</div>
+                                    </div>
+                                `).join('') : '<p>No blockers reported</p>'}
+                            </div>
+                        </div>
+                    `;
+
+                    insightsContent.innerHTML = html;
+                } else {
+                    insightsContent.innerHTML = '<p style="color: #ef4444;">Unable to load insights data.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading insights:', error);
+                document.getElementById('insights-content').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load insights.</p>';
+            }
+        }
+
+        // Load sprint health
+        async function loadSprintHealth() {
+            try {
+                const response = await fetch(`${MCP_API_URL}/api/sprint/health`);
+                const data = await response.json();
+
+                const healthContent = document.getElementById('sprint-health-content');
+
+                if (data.status === 'success' && data.sprint) {
+                    const score = data.health_score;
+                    const status = data.health_status;
+                    const metrics = data.metrics;
+                    const scoreBreakdown = data.score_breakdown;
+                    const sprint = data.sprint;
+
+                    const healthScoreClass = `health-score-${status}`;
+
+                    const html = `
+                        <div class="health-score-container">
+                            <div class="health-score-circle ${healthScoreClass}">
+                                <div>${score}</div>
+                                <div style="font-size: 0.8rem; margin-top: 0.5rem;">${status.toUpperCase()}</div>
+                            </div>
+                            <div class="health-info">
+                                <div class="health-status">${status === 'excellent' ? '✨' : status === 'good' ? '✅' : status === 'fair' ? '⚠️' : '🚨'} ${status}</div>
+                                <div class="sprint-info">
+                                    <div><strong>Sprint:</strong> ${sprint.name}</div>
+                                    <div><strong>Days Remaining:</strong> ${sprint.days_remaining} days</div>
+                                    <div style="margin-top: 1rem;">
+                                        <strong>Score Breakdown:</strong><br>
+                                        • Completion: ${scoreBreakdown.completion.toFixed(1)}/40<br>
+                                        • Blockers: ${scoreBreakdown.blockers.toFixed(1)}/30<br>
+                                        • Stuck Tasks: ${scoreBreakdown.stuck_tasks.toFixed(1)}/20<br>
+                                        • Overdue: ${scoreBreakdown.overdue.toFixed(1)}/10
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metrics-grid">
+                            <div class="metric-box">
+                                <div class="metric-label">Task Completion</div>
+                                <div class="metric-value">${metrics.completion_rate}%</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${metrics.completion_rate}%"></div>
+                                </div>
+                                <div class="metric-detail">${metrics.tasks.completed}/${metrics.total_sprint_tasks} tasks</div>
+                            </div>
+
+                            <div class="metric-box">
+                                <div class="metric-label">Active Blockers</div>
+                                <div class="metric-value" style="color: #ef4444;">${metrics.blockers.total}</div>
+                                <div class="metric-detail">
+                                    🔴 ${metrics.blockers.high} high
+                                    🟡 ${metrics.blockers.medium} medium
+                                    🟢 ${metrics.blockers.low} low
+                                </div>
+                            </div>
+
+                            <div class="metric-box">
+                                <div class="metric-label">Stuck Tasks</div>
+                                <div class="metric-value" style="color: ${metrics.stuck_tasks > 0 ? '#f59e0b' : '#10b981'};">${metrics.stuck_tasks}</div>
+                                <div class="metric-detail">In progress >24h</div>
+                            </div>
+
+                            <div class="metric-box">
+                                <div class="metric-label">Overdue Tasks</div>
+                                <div class="metric-value" style="color: ${metrics.overdue_tasks > 0 ? '#ef4444' : '#10b981'};">${metrics.overdue_tasks}</div>
+                                <div class="metric-detail">Past due date</div>
+                            </div>
+
+                            <div class="metric-box">
+                                <div class="metric-label">Help Requests</div>
+                                <div class="metric-value" style="color: #3b82f6;">${metrics.active_help_requests}</div>
+                                <div class="metric-detail">Pending/In Progress</div>
+                            </div>
+
+                            <div class="metric-box">
+                                <div class="metric-label">Task Status</div>
+                                <div class="metric-detail" style="margin-top: 0.5rem;">
+                                    ✅ ${metrics.tasks.completed} done<br>
+                                    🔄 ${metrics.tasks.in_progress} in progress<br>
+                                    ⏸️ ${metrics.tasks.blocked} blocked<br>
+                                    ⭕ ${metrics.tasks.not_started} not started
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    healthContent.innerHTML = html;
+                } else {
+                    healthContent.innerHTML = '<p style="color: #ef4444;">Unable to load sprint health data.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading sprint health:', error);
+                document.getElementById('sprint-health-content').innerHTML =
+                    '<p style="color: #ef4444;">Failed to load sprint health.</p>';
+            }
         }
 
         // Load everything on page load
         window.addEventListener('DOMContentLoaded', () => {
             loadStandups();
+            loadHelpRequests();
+            loadBlockers();
+            loadSprintHealth();
+            loadWorkloadHeatmap();
+            loadInsights();
+            loadDigest();
             initCharts();
             renderDependencyGraph();
 
             // Refresh every 30 seconds
             setInterval(loadStandups, 30000);
+            setInterval(loadHelpRequests, 30000);
+            setInterval(loadBlockers, 30000);
+            setInterval(loadSprintHealth, 30000);
+            setInterval(loadWorkloadHeatmap, 30000);
+            setInterval(loadInsights, 30000);
+            setInterval(loadDigest, 30000);
         });
     </script>
 </body>

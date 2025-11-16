@@ -20,6 +20,29 @@ class ProfileUpdateRequest(BaseModel):
     standup_time: Optional[str] = None
 
 
+@router.get("/active")
+async def get_active_users(request: Request):
+    """
+    Get all active users
+
+    Used by Slack bot for:
+    - Daily standup reminders
+    - Team roster
+    - Help request routing
+    """
+    try:
+        mcp = request.app.state.mcp
+        db = mcp.database
+
+        users = await db.get_all_active_users()
+
+        return {"users": users}
+
+    except Exception as e:
+        logger.error(f"Error getting active users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{user_id}")
 async def get_user(user_id: str, request: Request):
     """
@@ -42,28 +65,6 @@ async def get_user(user_id: str, request: Request):
 
     except Exception as e:
         logger.error(f"Error getting user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/active")
-async def get_active_users(request: Request):
-    """
-    Get all active users
-
-    Used by Slack bot for:
-    - Daily standup reminders
-    - Team roster
-    """
-    try:
-        mcp = request.app.state.mcp
-        db = mcp.database
-
-        users = await db.get_all_active_users()
-
-        return {"users": users}
-
-    except Exception as e:
-        logger.error(f"Error getting active users: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

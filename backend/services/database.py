@@ -406,6 +406,27 @@ class DatabaseService:
                 for task in tasks
             ]
 
+    async def get_all_tasks(self) -> List[Dict]:
+        """Get all tasks for dashboard"""
+        async with self.async_session() as session:
+            result = await session.execute(select(Task))
+            tasks = result.scalars().all()
+
+            return [
+                {
+                    "id": task.id,
+                    "title": task.title,
+                    "description": task.description,
+                    "assignee_id": task.assignee_id,
+                    "status": task.status.value if task.status else None,
+                    "priority": task.priority,
+                    "progress_percentage": task.progress_percentage,
+                    "jira_id": task.jira_id,
+                    "created_at": task.created_at.isoformat() if task.created_at else None
+                }
+                for task in tasks
+            ]
+
     async def update_task_status(
         self,
         user_id: str,
@@ -516,7 +537,11 @@ class DatabaseService:
         """Get recent standups"""
         async with self.async_session() as session:
             since = datetime.utcnow() - timedelta(days=days)
-            query = select(Standup).where(Standup.timestamp >= since)
+
+            # Join Standup with User to get user names
+            query = select(Standup, User).join(
+                User, Standup.user_id == User.id
+            ).where(Standup.timestamp >= since)
 
             if user_id:
                 query = query.where(Standup.user_id == user_id)
@@ -524,18 +549,18 @@ class DatabaseService:
             query = query.order_by(Standup.timestamp.desc())
 
             result = await session.execute(query)
-            standups = result.scalars().all()
+            standup_user_pairs = result.all()
 
             return [
                 {
                     "user_id": s.user_id,
-                    "user_name": s.user_id,  # TODO: Join with user table
+                    "user_name": u.name,  # Get actual user name from User table
                     "message": s.message,
                     "date": s.date,
                     "timestamp": s.timestamp,
                     "parsed_data": s.parsed_data
                 }
-                for s in standups
+                for s, u in standup_user_pairs
             ]
 
     # ========== SCHEDULER SUPPORT METHODS ==========
