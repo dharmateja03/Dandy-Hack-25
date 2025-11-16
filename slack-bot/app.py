@@ -12,6 +12,7 @@ This bot is how teams interact with MCP:
 
 import os
 import logging
+import threading
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 import httpx
@@ -55,16 +56,22 @@ def handle_standup_command(ack, command, client):
     """
     Trigger standup via slash command - Opens interactive modal
     """
-    ack()
-
-    user_id = command["user_id"]
-    trigger_id = command["trigger_id"]
-
-    # Run async function in new event loop
     try:
-        open_standup_modal(client, user_id, trigger_id)
+        ack()
+        logger.info("✅ /standup command received and acknowledged")
     except Exception as e:
-        logger.error(f"Error opening standup modal: {e}")
+        logger.error(f"❌ Error acknowledging command: {e}", exc_info=True)
+        return
+
+    try:
+        user_id = command["user_id"]
+        trigger_id = command["trigger_id"]
+        logger.info(f"Opening standup modal for {user_id}")
+
+        open_standup_modal(client, user_id, trigger_id)
+        logger.info(f"✅ Modal opened for {user_id}")
+    except Exception as e:
+        logger.error(f"❌ Error opening standup modal: {e}", exc_info=True)
 
 
 def open_standup_modal(client, user_id: str, trigger_id: str):
@@ -72,13 +79,15 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
     Open interactive modal for standup submission
     """
     try:
+        logger.info(f"📝 Fetching tasks for {user_id}")
         # Get user's current tasks from MCP
         tasks = []
         try:
             response = sync_http_client.get(f"/api/tasks/user/{user_id}")
             tasks = response.json().get("tasks", [])
+            logger.info(f"✅ Fetched {len(tasks)} tasks for {user_id}")
         except Exception as e:
-            logger.warning(f"Couldn't fetch tasks for {user_id}: {e}")
+            logger.warning(f"⚠️ Couldn't fetch tasks for {user_id}: {e}")
 
         # Build task options for dropdown
         task_options = [
@@ -88,6 +97,10 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
             }
             for task in tasks[:10]  # Limit to 10 tasks
         ]
+
+        # Get list of workspace members for help selection (with search)
+        # Using Slack's users_select element for native search functionality
+        logger.info(f"🔍 Fetching workspace members for {user_id}")
 
         modal_view = {
             "type": "modal",
@@ -141,13 +154,26 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
                         "type": "plain_text_input",
                         "action_id": "help_input",
                         "multiline": True,
-                        "placeholder": {"type": "plain_text", "text": "What do you need help with?"}
+                        "placeholder": {"type": "plain_text", "text": "What do you need help with? (e.g., 'Help from @Bharathi on auth')"}
                     },
                     "label": {"type": "plain_text", "text": "🙋 Help Needed (if any)"},
                     "optional": True
                 }
             ]
         }
+
+        # Add team member selection with workspace search
+        modal_view["blocks"].append({
+            "type": "input",
+            "block_id": "help_from_user",
+            "element": {
+                "type": "users_select",
+                "action_id": "help_from_select",
+                "placeholder": {"type": "plain_text", "text": "🔍 Search and select team member"}
+            },
+            "label": {"type": "plain_text", "text": "👥 Who do you need help from? (searchable)"},
+            "optional": True
+        })
 
         # Add task selection if tasks exist
         if task_options:
@@ -172,11 +198,11 @@ def open_standup_modal(client, user_id: str, trigger_id: str):
 
 
 @app.view("standup_modal")
-async def handle_standup_submission(ack, body, client, view):
+def handle_standup_submission(ack, body, client, view):
     """
     Handle standup modal submission
     """
-    await ack()
+    ack()
 
     user_id = body["user"]["id"]
     values = view["state"]["values"]
@@ -186,6 +212,17 @@ async def handle_standup_submission(ack, body, client, view):
     working = values["working_today"]["working_input"].get("value", "")
     blockers = values["blockers"]["blockers_input"].get("value", "")
     help_needed = values["help_needed"]["help_input"].get("value", "")
+
+    # Extract selected help person (if any)
+    # users_select returns selected_user field with the Slack user ID
+    help_from_user = None
+    if "help_from_user" in values and values["help_from_user"].get("help_from_select"):
+        help_elem = values["help_from_user"]["help_from_select"]
+        # users_select format
+        help_from_user = help_elem.get("selected_user")
+        if not help_from_user:
+            # Fallback for other formats
+            help_from_user = help_elem.get("selected_option", {}).get("value")
 
     # Combine into standup message
     standup_message = f"""
@@ -202,9 +239,29 @@ async def handle_standup_submission(ack, body, client, view):
     if help_needed:
         standup_message += f"\n**Help Needed:**\n{help_needed}\n"
 
-    # Process standup
+    # Add selected help person to the message if available
+    if help_from_user:
+        # Get the person's real name from Slack
+        try:
+            user_info = client.users_info(user=help_from_user)
+            helper_name = user_info.get('user', {}).get('real_name') or user_info.get('user', {}).get('name')
+            if not helper_name:
+                helper_name = help_from_user
+        except Exception as e:
+            logger.warning(f"Could not fetch user info for {help_from_user}: {e}")
+            helper_name = help_from_user
+
+        standup_message += f"\n**Help Requested From:** {helper_name}\n"
+        logger.info(f"Help person selected: {helper_name} ({help_from_user})")
+
+    # Process standup in background thread (now synchronous)
     try:
-        await process_standup_response(user_id, standup_message, client)
+        thread = threading.Thread(
+            target=process_standup_response,
+            args=(user_id, standup_message, client),
+            daemon=True
+        )
+        thread.start()
     except Exception as e:
         logger.error(f"Error processing standup: {e}")
 
@@ -320,13 +377,13 @@ async def handle_message(event, client, say):
             logger.error(f"Error processing query: {e}")
 
 
-async def process_standup_response(user_id: str, message: str, client):
+def process_standup_response(user_id: str, message: str, client):
     """
-    Process standup response through MCP with enhanced feedback
+    Process standup response through MCP with enhanced feedback (synchronous version for threading)
     """
     try:
-        # Send to MCP for processing
-        response = await http_client.post(
+        # Send to MCP for processing (use sync client)
+        response = sync_http_client.post(
             "/api/standups/submit",
             json={
                 "user_id": user_id,
@@ -343,6 +400,18 @@ async def process_standup_response(user_id: str, message: str, client):
         task_updates = result.get('parsed_data', {}).get('task_updates', [])
 
         # Build response blocks with interactive elements
+        help_requests = result.get('help_requests_routed', [])
+        logger.info(f"Received help_requests_routed: {help_requests}")
+
+        help_req_text = f"• *Help requests routed:* {len(help_requests)}"
+        if help_requests:
+            for req in help_requests:
+                logger.debug(f"Processing help request: {req}")
+                assigned = req.get('assigned_name', req.get('assigned_to', 'Unknown'))
+                topic = req.get('topic', 'General help')
+                logger.info(f"Displaying: {topic} → {assigned}")
+                help_req_text += f"\n  - {topic} → {assigned}"
+
         blocks = [
             {
                 "type": "header",
@@ -353,7 +422,7 @@ async def process_standup_response(user_id: str, message: str, client):
                 "text": {
                     "type": "mrkdwn",
                     "text": f"I've processed your update:\n" +
-                           f"• *Help requests routed:* {len(result.get('help_requests_routed', []))}\n" +
+                           help_req_text + "\n" +
                            f"• *Blockers detected:* {result.get('blockers_detected', 0)}\n" +
                            f"• *Tasks updated:* {len(task_updates)}"
                 }
@@ -377,21 +446,112 @@ async def process_standup_response(user_id: str, message: str, client):
             blocks=blocks
         )
 
-        # If help requests were routed, create group chats
-        for help_req in result.get("help_requests_routed", []):
+        # Send help request notifications via DM to helpers
+        logger.info(f"Processing {len(help_requests)} help requests for DM notifications")
+        for help_req in help_requests:
             if help_req.get("assigned_to"):
-                await create_help_group_chat(
-                    client,
-                    requesting_user=user_id,
-                    helper_user=help_req["assigned_to"],
-                    topic=help_req.get("topic", "Help needed")
-                )
+                try:
+                    help_request_id = help_req.get("help_request_id")
+                    helper_db_id = help_req.get("assigned_to")  # Database user ID
+                    helper_name = help_req.get('assigned_name', helper_db_id)
+                    topic = help_req.get('topic', 'General help')
+                    reason = help_req.get('reason', '')
 
-        # Notify manager if blockers detected
-        if result.get('blockers_detected', 0) > 0:
-            blockers_list = result.get('parsed_data', {}).get('blockers', [])
-            blocker_descriptions = [b.get('description', str(b)) for b in blockers_list]
-            await notify_manager_of_blocker(client, user_id, blocker_descriptions)
+                    logger.info(f"📧 Help request routed: {help_request_id} - {topic} from {user_id} to {helper_name}")
+
+                    # Try to send DM to helper if they have a Slack account
+                    slack_user_id = None
+
+                    # If helper_db_id looks like a Slack ID (starts with U), use it directly
+                    if helper_db_id.startswith('U') and len(helper_db_id) > 5:
+                        slack_user_id = helper_db_id
+                        logger.debug(f"Using helper_db_id as Slack ID: {slack_user_id}")
+                    else:
+                        # Otherwise, it's a database ID - try to look up the slack_user_id
+                        try:
+                            user_response = sync_http_client.get(f"/api/users/{helper_db_id}")
+                            if user_response.status_code == 200:
+                                user_data = user_response.json()
+                                slack_user_id = user_data.get("slack_user_id")
+                                if slack_user_id:
+                                    logger.debug(f"Found Slack ID {slack_user_id} for database user {helper_db_id}")
+                                else:
+                                    logger.warning(f"⚠️ Helper {helper_name} (ID: {helper_db_id}) has no Slack user ID mapping")
+                                    logger.info(f"📝 Help request {help_request_id} stored for manual routing")
+                            else:
+                                logger.warning(f"⚠️ Could not find user {helper_db_id} in database")
+                                logger.info(f"📝 Help request {help_request_id} stored for manual routing")
+                        except Exception as lookup_err:
+                            logger.warning(f"⚠️ Error looking up Slack ID for {helper_db_id}: {lookup_err}")
+                            logger.info(f"📝 Help request {help_request_id} stored for manual routing")
+
+                    if slack_user_id:
+                        try:
+                            # Open DM conversation with helper
+                            dm_response = client.conversations_open(users=[slack_user_id])
+                            dm_channel_id = dm_response.get("channel", {}).get("id")
+
+                            if dm_channel_id:
+                                # Send initial help request notification (parent message)
+                                parent_message = client.chat_postMessage(
+                                    channel=dm_channel_id,
+                                    text=f"Help Request from <@{user_id}>"
+                                )
+
+                                parent_ts = parent_message.get("ts")
+
+                                if parent_ts:
+                                    # Send detailed message as reply in thread to create the thread
+                                    message_response = client.chat_postMessage(
+                                        channel=dm_channel_id,
+                                        thread_ts=parent_ts,
+                                        blocks=[
+                                            {
+                                                "type": "header",
+                                                "text": {
+                                                    "type": "plain_text",
+                                                    "text": f"🆘 Help Request from <@{user_id}>"
+                                                }
+                                            },
+                                            {
+                                                "type": "section",
+                                                "text": {
+                                                    "type": "mrkdwn",
+                                                    "text": f"*Topic:* {topic}\n" +
+                                                           f"*Reason:* {reason}\n\n" +
+                                                           f"Please respond in this thread to help. " +
+                                                           f"The conversation will be tracked for team learning.\n\n" +
+                                                           f"_Request ID: {help_request_id}_"
+                                                }
+                                            }
+                                        ]
+                                    )
+
+                                    # Store thread ID for conversation tracking
+                                    thread_ts = parent_ts
+                                else:
+                                    thread_ts = None
+
+                                if thread_ts:
+                                    try:
+                                        sync_http_client.post(
+                                            f"/api/help/{help_request_id}/track-thread",
+                                            json={"thread_ts": thread_ts, "dm_channel_id": dm_channel_id}
+                                        )
+                                        logger.info(f"✅ Sent DM notification to helper {helper_name} (Request {help_request_id}, Thread: {thread_ts})")
+                                    except Exception as track_err:
+                                        logger.warning(f"⚠️ Could not track thread: {track_err}")
+                                else:
+                                    logger.warning(f"⚠️ No timestamp in DM response for request {help_request_id}")
+                            else:
+                                logger.warning(f"⚠️ Could not open DM with {helper_name} ({slack_user_id})")
+
+                        except Exception as dm_err:
+                            logger.error(f"❌ Failed to send DM to {helper_name}: {str(dm_err)}")
+                            logger.info(f"📝 Help request {help_request_id} stored for manual routing")
+
+                except Exception as e:
+                    logger.error(f"❌ Error handling help request: {e}", exc_info=True)
 
         logger.info(f"Processed standup for {user_id}")
 
@@ -1173,6 +1333,96 @@ def setup_scheduled_jobs(client):
 
 # ========== MAIN ==========
 
+def sync_slack_workspace_members(client):
+    """
+    Sync all Slack workspace members and their IDs to MCP database at startup
+
+    This ensures the server has access to all workspace member IDs for:
+    - Sending DM notifications
+    - Help request routing
+    - Member lookups
+    """
+    try:
+        logger.info("🔄 Syncing Slack workspace members to database...")
+
+        # Fetch all workspace members
+        members_response = client.users_list()
+        members = members_response.get('members', [])
+
+        logger.info(f"Found {len(members)} members in Slack workspace")
+
+        # Get existing users from database
+        try:
+            db_users_response = sync_http_client.get("/api/users")
+            db_users_list = db_users_response.json().get('users', [])
+            # Map by name (lowercase) for matching
+            db_users_by_name = {user.get('name', '').lower(): user for user in db_users_list}
+            logger.debug(f"Found {len(db_users_list)} existing users in database")
+        except Exception as e:
+            logger.warning(f"Could not fetch existing users: {e}")
+            db_users_list = []
+            db_users_by_name = {}
+
+        # For each member, update/create in database
+        synced = 0
+        skipped = 0
+        for member in members:
+            try:
+                slack_user_id = member.get('id')
+                real_name = member.get('real_name') or member.get('name', slack_user_id)
+
+                # Skip bots and deactivated users
+                if member.get('is_bot') or member.get('deleted'):
+                    logger.debug(f"⊘ Skipped bot/deactivated: {real_name}")
+                    skipped += 1
+                    continue
+
+                # Try to find existing user by name match
+                existing_user = db_users_by_name.get(real_name.lower())
+
+                if existing_user:
+                    # Link Slack ID to existing user
+                    target_user_id = existing_user['id']
+                    link_response = sync_http_client.post(
+                        f"/api/users/{target_user_id}/link-slack",
+                        json={"slack_user_id": slack_user_id}
+                    )
+                    if link_response.status_code == 200:
+                        synced += 1
+                        logger.info(f"✅ Linked: {real_name} → {slack_user_id}")
+                    else:
+                        logger.debug(f"⚠ Could not link Slack ID for {real_name}")
+                else:
+                    # Create new user with Slack ID
+                    sync_response = sync_http_client.post(
+                        f"/api/users/{slack_user_id}/profile",
+                        json={
+                            "expertise_tags": [],
+                            "timezone": "UTC"
+                        }
+                    )
+
+                    if sync_response.status_code == 200:
+                        # Link the Slack user ID to itself
+                        link_response = sync_http_client.post(
+                            f"/api/users/{slack_user_id}/link-slack",
+                            json={"slack_user_id": slack_user_id}
+                        )
+                        if link_response.status_code == 200:
+                            synced += 1
+                            logger.info(f"✅ Created & synced: {real_name} ({slack_user_id})")
+                        else:
+                            logger.debug(f"⚠ Created but couldn't link Slack ID for {real_name}")
+
+            except Exception as member_err:
+                logger.debug(f"Error syncing member {member.get('name')}: {member_err}")
+
+        logger.info(f"✅ Synced {synced} workspace members to database (skipped {skipped} bots/deactivated)")
+
+    except Exception as e:
+        logger.error(f"❌ Error syncing Slack workspace members: {e}", exc_info=True)
+
+
 if __name__ == "__main__":
     logger.info("🚀 Starting MCP Slack Bot...")
 
@@ -1182,6 +1432,9 @@ if __name__ == "__main__":
 
     # Get Slack client from app
     client = app.client
+
+    # Sync workspace members at startup
+    sync_slack_workspace_members(client)
 
     # Set up scheduled jobs
     setup_scheduled_jobs(client)

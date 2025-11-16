@@ -16,7 +16,7 @@ from services.github_service import GitHubService
 from services.linear_service import LinearService
 from services.calendar_service import GoogleCalendarService
 from services.expert_matcher import ExpertMatcher
-from routers import standups, tasks, help_requests, analytics, users, github, expertise
+from routers import standups, tasks, help_requests, analytics, users, github, expertise, blockers, workload, sprint
 from config import settings
 
 # Configure logging
@@ -160,8 +160,11 @@ app.add_middleware(
 app.include_router(standups.router, prefix="/api/standups", tags=["Standups"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["Tasks"])
 app.include_router(help_requests.router, prefix="/api/help", tags=["Help Requests"])
+app.include_router(blockers.router, prefix="/api/blockers", tags=["Blockers"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(workload.router, prefix="/api/workload", tags=["Workload"])
+app.include_router(sprint.router, prefix="/api/sprint", tags=["Sprint"])
 app.include_router(github.router, tags=["GitHub"])
 app.include_router(expertise.router, tags=["Expertise"])
 

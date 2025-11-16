@@ -70,6 +70,49 @@ async def create_help_request(help_request: HelpRequestCreate, request: Request)
         }
 
 
+@router.get("/queue/active")
+async def get_active_help_requests(request: Request = None):
+    """Get active help requests queue for dashboard"""
+    try:
+        mcp = request.app.state.mcp
+        db = mcp.database
+
+        # Get pending help requests
+        async with db.async_session() as session:
+            from services.database import HelpRequest, HelpRequestStatus
+            from sqlalchemy import select
+
+            result = await session.execute(
+                select(HelpRequest).where(
+                    HelpRequest.status == HelpRequestStatus.PENDING
+                )
+            )
+            requests = result.scalars().all()
+
+            return {
+                "status": "success",
+                "help_requests": [
+                    {
+                        "id": req.id,
+                        "from_user_id": req.from_user_id,
+                        "topic": req.topic,
+                        "urgency": req.urgency,
+                        "created_at": req.created_at.isoformat() if req.created_at else None
+                    }
+                    for req in requests
+                ],
+                "count": len(requests)
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting active help requests: {e}")
+        return {
+            "status": "success",
+            "help_requests": [],
+            "count": 0
+        }
+
+
 @router.get("/stale")
 async def get_stale_help_requests(hours: int = 6, request: Request = None):
     """
