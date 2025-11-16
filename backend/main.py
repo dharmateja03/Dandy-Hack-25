@@ -3,7 +3,7 @@ MCP (Model Context Protocol) - Main FastAPI Application
 Central intelligence for team coordination and context management
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
@@ -187,6 +187,20 @@ async def health_check():
 
     health_status = await mcp_core.health_check()
     return health_status
+
+
+# Dashboard convenience endpoints (without /api/analytics/ prefix)
+@app.get("/api/digest/today")
+async def get_digest_today(request: Request):
+    """Get today's digest (convenience route for dashboard)"""
+    return await analytics.get_today_digest(request=request)
+
+
+@app.get("/api/insights/trends")
+async def get_insights_trends_direct(days: int = 7, request: Request = None):
+    """Get insights and trends (convenience route for dashboard)"""
+    return await analytics.get_insights_trends(days=days, request=request)
+
 
 @app.get("/api/mcp/query")
 async def query_mcp(query: str, user_id: str):
