@@ -16,7 +16,7 @@ from services.github_service import GitHubService
 from services.linear_service import LinearService
 from services.calendar_service import GoogleCalendarService
 from services.expert_matcher import ExpertMatcher
-from routers import standups, tasks, help_requests, analytics, users, github, expertise, blockers, workload, sprint
+from routers import standups, tasks, help_requests, analytics, users, github, expertise, blockers, workload, sprint, incidents
 from config import settings
 
 # Configure logging
@@ -165,6 +165,7 @@ app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"]
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(workload.router, prefix="/api/workload", tags=["Workload"])
 app.include_router(sprint.router, prefix="/api/sprint", tags=["Sprint"])
+app.include_router(incidents.router, prefix="/api/incidents", tags=["Incidents"])
 app.include_router(github.router, tags=["GitHub"])
 app.include_router(expertise.router, tags=["Expertise"])
 
